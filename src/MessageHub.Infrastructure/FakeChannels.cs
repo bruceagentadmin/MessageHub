@@ -8,11 +8,12 @@ namespace MessageHub.Infrastructure;
 public abstract class ConfiguredChannelBase(
     string name,
     string description,
-    IChannelSettingsService channelSettingsService) : IChannelClient
+    IChannelSettingsService channelSettingsService,
+    HttpClient? httpClient = null) : IChannelClient
 {
     public string Name => name;
     protected IChannelSettingsService ChannelSettingsService { get; } = channelSettingsService;
-    protected HttpClient HttpClient { get; } = new();
+    protected HttpClient HttpClient { get; } = httpClient ?? new HttpClient();
 
     public Task<InboundMessage> ParseAsync(string tenantId, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
     {
@@ -52,7 +53,7 @@ public abstract class ConfiguredChannelBase(
             details);
 }
 
-public sealed class TelegramChannel(IChannelSettingsService channelSettingsService) : ConfiguredChannelBase("telegram", "Telegram 真實通道，可接 webhook 與手動發送", channelSettingsService)
+public sealed class TelegramChannel(IChannelSettingsService channelSettingsService, HttpClient? httpClient = null) : ConfiguredChannelBase("telegram", "Telegram 真實通道，可接 webhook 與手動發送", channelSettingsService, httpClient)
 {
     public override async Task<MessageLogEntry> SendAsync(OutboundMessage message, CancellationToken cancellationToken = default)
     {
@@ -70,7 +71,7 @@ public sealed class TelegramChannel(IChannelSettingsService channelSettingsServi
     }
 }
 
-public sealed class LineChannel(IChannelSettingsService channelSettingsService) : ConfiguredChannelBase("line", "Line 真實通道，可接 webhook 與手動發送", channelSettingsService)
+public sealed class LineChannel(IChannelSettingsService channelSettingsService, HttpClient? httpClient = null) : ConfiguredChannelBase("line", "Line 真實通道，可接 webhook 與手動發送", channelSettingsService, httpClient)
 {
     public override async Task<MessageLogEntry> SendAsync(OutboundMessage message, CancellationToken cancellationToken = default)
     {
