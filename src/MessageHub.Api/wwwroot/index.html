@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MessageHub Control Center</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #121936;
+      --panel-soft: #0f1630;
+      --line: #273056;
+      --line-soft: #34406d;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --success: #86efac;
+      --warning: #fde68a;
+      --danger: #fca5a5;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .hero { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px; }
+    .hero-actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .grid { display:grid; grid-template-columns: 1.05fr 1fr; gap: 20px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+    h1,h2,h3 { margin:0 0 12px; }
+    .muted { color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .small { font-size: 12px; color: var(--muted); }
+    .settings-list { display:flex; flex-wrap:wrap; gap:10px; }
+    .settings-card { width:100%; background: var(--panel-soft); border:1px solid var(--line-soft); border-radius: 14px; padding: 14px; }
+    .settings-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; }
+    .meta { display:flex; gap:8px; flex-wrap:wrap; }
+    .badge { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:5px 10px; font-size:12px; border:1px solid var(--line-soft); background:#172041; }
+    .badge.enabled { color: var(--success); }
+    .badge.disabled { color: var(--danger); }
+    .settings-config { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px; margin-top:8px; }
+    form { display:grid; gap:10px; }
+    input, textarea, select, button { width:100%; border-radius:12px; border:1px solid var(--line-soft); background: var(--panel-soft); color:#fff; padding:10px 12px; font-size:14px; }
+    label { display:grid; gap:6px; font-size:13px; color: var(--muted); }
+    textarea { min-height: 120px; resize: vertical; }
+    button { background: var(--primary); border:0; cursor:pointer; font-weight:700; min-height:44px; }
+    button:hover { background: var(--primary-hover); }
+    button.secondary { background: #1f2a4d; }
+    button.ghost { background: transparent; border:1px solid var(--line-soft); }
+    button.warn { background:#92400e; }
+    button.mini { width:auto; min-height:auto; padding:8px 10px; font-size:12px; }
+    table { width:100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align:left; padding: 10px 8px; border-bottom:1px solid var(--line); vertical-align: top; }
+    .toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+    .status { min-height: 20px; }
+    .ok { color: var(--success); }
+    .error { color: var(--danger); }
+    .warn-text { color: var(--warning); }
+    .modal-backdrop { position:fixed; inset:0; background: rgba(5,8,20,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:50; }
+    .modal-backdrop.show { display:flex; }
+    .modal { width:min(860px, 100%); max-height: calc(100vh - 40px); overflow:auto; background: #10182f; border:1px solid var(--line-soft); border-radius: 20px; padding: 20px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+    .modal-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px; }
+    .modal-actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .field-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:12px; }
+    .full { grid-column: 1 / -1; }
+    .switch { display:flex; align-items:center; gap:10px; padding: 12px 14px; border:1px solid var(--line-soft); border-radius:12px; background: var(--panel-soft); min-height:44px; }
+    .switch input { width:18px; height:18px; margin:0; }
+    .config-fields { display:grid; gap:12px; margin-top:12px; }
+    .divider { height:1px; background: var(--line); margin:16px 0; }
+    pre { white-space: pre-wrap; }
+    @media (max-width: 900px) {
+      .grid, .field-grid, .settings-config { grid-template-columns: 1fr; }
+      .hero { flex-direction: column; }
+      .settings-card-head { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <h1>MessageHub Control Center</h1>
+        <p class="muted">POC 控制中心：看訊息 log、手動發送訊息，現在也能用友善介面管理頻道設定並存成 JSON。</p>
+      </div>
+      <div class="hero-actions">
+        <button type="button" class="secondary" id="openSettingsBtn">管理頻道設定</button>
+        <button type="button" class="ghost" onclick="loadAll()">重新整理</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>手動發送訊息</h2>
+        <form id="sendForm">
+          <input name="tenantId" value="demo-tenant" placeholder="tenantId" />
+          <select name="channel" id="channelSelect"></select>
+          <input name="targetId" value="demo-chat" placeholder="targetId / chatId" />
+          <input name="triggeredBy" value="ControlCenter" placeholder="triggeredBy" />
+          <textarea name="content" placeholder="輸入要發送的訊息">老大，這是 MessageHub POC 測試訊息。</textarea>
+          <button type="submit">送出</button>
+        </form>
+        <p id="sendStatus" class="small status"></p>
+      </section>
+
+      <section class="card">
+        <div class="toolbar">
+          <div>
+            <h2>頻道設定摘要</h2>
+            <div class="small">按一下「管理頻道設定」可開啟表單視窗，不必手改 JSON。</div>
+          </div>
+        </div>
+        <div id="settingsSummary" class="settings-list"></div>
+        <div class="divider"></div>
+        <h2>Webhook 測試範例</h2>
+        <pre class="small">LINE: POST /api/line/webhook
+Telegram: POST /api/telegram/webhook</pre>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:20px;">
+      <div class="toolbar">
+        <div>
+          <h2>訊息 Log</h2>
+          <div class="small">最新 50 筆，30 秒自動刷新</div>
+        </div>
+        <button onclick="loadLogs()" style="width:auto; padding:10px 14px;">手動刷新</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>時間</th><th>租戶</th><th>頻道</th><th>方向</th><th>狀態</th><th>目標</th><th>內容</th><th>來源</th></tr>
+        </thead>
+        <tbody id="logsBody"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-head">
+        <div>
+          <h2 id="settingsTitle">頻道設定</h2>
+          <div class="small">這裡編輯後會自動存成 JSON 檔，但你只會看到友善表單。</div>
+          <div id="settingsFilePath" class="small"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" id="addChannelBtn">新增頻道</button>
+          <button type="button" class="ghost" id="closeSettingsBtn">關閉</button>
+        </div>
+      </div>
+
+      <div id="settingsForms"></div>
+
+      <div class="divider"></div>
+      <div class="modal-actions">
+        <button type="button" id="saveSettingsBtn">儲存設定</button>
+      </div>
+      <p id="settingsStatus" class="small status"></p>
+    </div>
+  </div>
+
+  <template id="channelFormTemplate">
+    <section class="card" style="margin-bottom:14px; background:#0d1430;">
+      <div class="toolbar">
+        <div>
+          <h3>頻道項目</h3>
+          <div class="small">設定 Id、類型、是否啟用，以及對應的授權資訊 / Webhook 網址。</div>
+        </div>
+        <button type="button" class="warn remove-channel-btn mini">刪除</button>
+      </div>
+      <div class="field-grid">
+        <label>
+          頻道 Id
+          <input data-field="id" placeholder="例如 Line_Main" />
+        </label>
+        <label>
+          頻道類型
+          <select data-field="type"></select>
+        </label>
+        <div class="switch full">
+          <input type="checkbox" data-field="enabled" />
+          <span>啟用這個頻道</span>
+        </div>
+      </div>
+      <div class="config-fields"></div>
+      <div class="toolbar" style="margin-top:12px; margin-bottom:0;">
+        <div class="small">Webhook 驗證：Line 檢查 HTTP 200；Telegram 會直接 setWebhook 綁定。</div>
+        <button type="button" class="secondary mini verify-webhook-btn">驗證 / 綁定 Webhook</button>
+      </div>
+      <p class="small status verify-status"></p>
+    </section>
+  </template>
+
+  <script>
+    let channelTypeDefinitions = [];
+    let settingsDocument = { channels: [] };
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function normalizeSettings(payload) {
+      return {
+        channels: (payload.channels || payload.Channels || []).map(item => ({
+          id: item.id || item.Id || '',
+          type: item.type || item.Type || 'Telegram',
+          enabled: item.enabled ?? item.Enabled ?? true,
+          config: item.config || item.Config || {}
+        }))
+      };
+    }
+
+    function getTypeDefinition(type) {
+      return channelTypeDefinitions.find(x => x.type === type || x.Type === type) || channelTypeDefinitions[0];
+    }
+
+    function renderSettingsSummary() {
+      const root = document.getElementById('settingsSummary');
+      if (!settingsDocument.channels.length) {
+        root.innerHTML = '<div class="small">目前還沒有頻道設定。</div>';
+        return;
+      }
+
+      root.innerHTML = settingsDocument.channels.map(channel => {
+        const configItems = Object.entries(channel.config || {})
+          .map(([key, value]) => `<div class="badge">${escapeHtml(key)}: ${escapeHtml(maskValue(key, value))}</div>`)
+          .join('');
+
+        return `
+          <article class="settings-card">
+            <div class="settings-card-head">
+              <div>
+                <h3>${escapeHtml(channel.id)}</h3>
+                <div class="meta">
+                  <span class="badge">${escapeHtml(channel.type)}</span>
+                  <span class="badge ${channel.enabled ? 'enabled' : 'disabled'}">${channel.enabled ? '已啟用' : '未啟用'}</span>
+                </div>
+              </div>
+              <button type="button" class="ghost mini" onclick="openSettingsModal()">編輯</button>
+            </div>
+            <div class="settings-config">${configItems || '<div class="small">尚未填任何設定值</div>'}</div>
+          </article>`;
+      }).join('');
+    }
+
+    function maskValue(key, value) {
+      const text = String(value ?? '');
+      const secretKeywords = ['token', 'secret', 'password'];
+      const lowerKey = key.toLowerCase();
+      const isSecret = secretKeywords.some(x => lowerKey.includes(x));
+      if (!isSecret || !text) return text;
+      if (text.length <= 4) return '••••';
+      return `${text.slice(0, 2)}••••${text.slice(-2)}`;
+    }
+
+    function createChannelForm(channel = { id: '', type: 'Telegram', enabled: true, config: {} }) {
+      const template = document.getElementById('channelFormTemplate');
+      const fragment = template.content.cloneNode(true);
+      const card = fragment.querySelector('section');
+      const typeSelect = card.querySelector('[data-field="type"]');
+      const idInput = card.querySelector('[data-field="id"]');
+      const enabledInput = card.querySelector('[data-field="enabled"]');
+      const configRoot = card.querySelector('.config-fields');
+      const verifyButton = card.querySelector('.verify-webhook-btn');
+      const verifyStatus = card.querySelector('.verify-status');
+
+      typeSelect.innerHTML = channelTypeDefinitions.map(def => {
+        const type = def.type || def.Type;
+        const displayName = def.displayName || def.DisplayName;
+        return `<option value="${escapeHtml(type)}">${escapeHtml(displayName)}</option>`;
+      }).join('');
+
+      idInput.value = channel.id || '';
+      typeSelect.value = channel.type || 'Telegram';
+      enabledInput.checked = channel.enabled ?? true;
+
+      function renderConfigFields() {
+        const definition = getTypeDefinition(typeSelect.value);
+        const fields = definition.fields || definition.Fields || [];
+        configRoot.innerHTML = fields.map(field => {
+          const key = field.key || field.Key;
+          const label = field.label || field.Label;
+          const placeholder = field.placeholder || field.Placeholder;
+          const required = field.required ?? field.Required;
+          const secret = field.secret ?? field.Secret;
+          const value = channel.config?.[key] ?? '';
+
+          return `
+            <label>
+              ${escapeHtml(label)}${required ? ' *' : ''}
+              <input data-config-key="${escapeHtml(key)}" type="${secret ? 'password' : 'text'}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" ${required ? 'required' : ''} />
+            </label>`;
+        }).join('');
+      }
+
+      async function verifyWebhook() {
+        verifyStatus.className = 'small status';
+        const channelId = idInput.value.trim();
+        if (!channelId) {
+          verifyStatus.classList.add('error');
+          verifyStatus.textContent = '請先填頻道 Id 並儲存設定。';
+          return;
+        }
+
+        const res = await fetch('/api/control/channel-settings/verify-webhook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelId })
+        });
+        const data = await res.json();
+        verifyStatus.classList.add(data.success ? 'ok' : 'error');
+        const detail = data.details ? ` / ${data.details}` : '';
+        verifyStatus.textContent = `${data.message}${data.statusCode ? ` (HTTP ${data.statusCode})` : ''}${detail}`;
+      }
+
+      renderConfigFields();
+      typeSelect.addEventListener('change', renderConfigFields);
+      card.querySelector('.remove-channel-btn').addEventListener('click', () => card.remove());
+      verifyButton.addEventListener('click', verifyWebhook);
+      return card;
+    }
+
+    function collectChannelForms() {
+      return [...document.querySelectorAll('#settingsForms section')].map(card => {
+        const type = card.querySelector('[data-field="type"]').value;
+        const config = {};
+        card.querySelectorAll('[data-config-key]').forEach(input => {
+          if (input.value.trim()) {
+            config[input.dataset.configKey] = input.value.trim();
+          }
+        });
+
+        return {
+          id: card.querySelector('[data-field="id"]').value.trim(),
+          type,
+          enabled: card.querySelector('[data-field="enabled"]').checked,
+          config
+        };
+      });
+    }
+
+    function renderSettingsForms() {
+      const root = document.getElementById('settingsForms');
+      root.innerHTML = '';
+      settingsDocument.channels.forEach(channel => root.appendChild(createChannelForm(channel)));
+      if (!settingsDocument.channels.length) {
+        root.appendChild(createChannelForm());
+      }
+    }
+
+    async function loadChannelSettings() {
+      const res = await fetch('/api/control/channel-settings');
+      const data = await res.json();
+      channelTypeDefinitions = data.channelTypes;
+      settingsDocument = normalizeSettings(data.settings);
+      document.getElementById('settingsFilePath').textContent = `設定檔：${data.filePath}`;
+      renderSettingsSummary();
+      renderSettingsForms();
+    }
+
+    async function loadChannels() {
+      const res = await fetch('/api/control/channels');
+      const data = await res.json();
+      const select = document.getElementById('channelSelect');
+      select.innerHTML = '';
+      data.forEach(c => {
+        const option = document.createElement('option');
+        option.value = c.name;
+        option.textContent = c.name;
+        select.appendChild(option);
+      });
+    }
+
+    async function loadLogs() {
+      const res = await fetch('/api/control/logs?count=50');
+      const data = await res.json();
+      const body = document.getElementById('logsBody');
+      body.innerHTML = data.map(x => `
+        <tr>
+          <td>${new Date(x.timestamp).toLocaleString()}</td>
+          <td>${escapeHtml(x.tenantId)}</td>
+          <td>${escapeHtml(x.channel)}</td>
+          <td>${escapeHtml(x.direction)}</td>
+          <td class="ok">${escapeHtml(x.status)}</td>
+          <td>${escapeHtml(x.targetId)}</td>
+          <td>${escapeHtml(x.content)}</td>
+          <td>${escapeHtml(x.source)}<div class="small">${escapeHtml(x.details ?? '')}</div></td>
+        </tr>`).join('');
+    }
+
+    async function loadAll() {
+      await Promise.all([loadChannels(), loadLogs(), loadChannelSettings()]);
+    }
+
+    async function saveSettings() {
+      const status = document.getElementById('settingsStatus');
+      status.className = 'small status';
+      const payload = {
+        channels: collectChannelForms().filter(x => x.id && x.type)
+      };
+
+      const res = await fetch('/api/control/channel-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        status.classList.add('error');
+        status.textContent = `儲存失敗：${await res.text()}`;
+        return;
+      }
+
+      settingsDocument = normalizeSettings(await res.json());
+      renderSettingsSummary();
+      renderSettingsForms();
+      status.classList.add('ok');
+      status.textContent = '頻道設定已儲存。';
+    }
+
+    function openSettingsModal() {
+      document.getElementById('settingsModal').classList.add('show');
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settingsModal').classList.remove('show');
+    }
+
+    document.getElementById('sendForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      const payload = Object.fromEntries(form.entries());
+      const res = await fetch('/api/control/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const status = document.getElementById('sendStatus');
+      status.className = 'small status';
+      if (res.ok) {
+        const data = await res.json();
+        status.classList.add('ok');
+        status.textContent = `送出成功：${data.channel} -> ${data.targetId}`;
+        loadLogs();
+      } else {
+        status.classList.add('error');
+        status.textContent = `送出失敗：${await res.text()}`;
+      }
+    });
+
+    document.getElementById('openSettingsBtn').addEventListener('click', openSettingsModal);
+    document.getElementById('closeSettingsBtn').addEventListener('click', closeSettingsModal);
+    document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+    document.getElementById('addChannelBtn').addEventListener('click', () => {
+      document.getElementById('settingsForms').appendChild(createChannelForm());
+    });
+    document.getElementById('settingsModal').addEventListener('click', (event) => {
+      if (event.target.id === 'settingsModal') closeSettingsModal();
+    });
+
+    loadAll();
+    setInterval(loadLogs, 30000);
+  </script>
+</body>
+</html>

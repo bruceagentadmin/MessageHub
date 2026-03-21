@@ -1,0 +1,25 @@
+{
+  "Channels": [
+    {
+      "Id": "Line_Main",
+      "Type": "Line",
+      "Enabled": true,
+      "Config": {
+        "ChannelAccessToken": "<your-line-channel-access-token>",
+        "ChannelSecret": "<optional-for-poc>",
+        "WebhookUrl": "https://<your-ngrok-domain>/api/line/webhook",
+        "WebhookMode": "ngrok"
+      }
+    },
+    {
+      "Id": "Telegram_Service",
+      "Type": "Telegram",
+      "Enabled": true,
+      "Config": {
+        "BotToken": "<your-telegram-bot-token>",
+        "WebhookUrl": "https://<your-ngrok-domain>/api/telegram/webhook",
+        "WebhookMode": "ngrok"
+      }
+    }
+  ]
+}
