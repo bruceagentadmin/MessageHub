@@ -1,6 +1,5 @@
 using System.Text.Json;
-using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MessageHub.Api.Controllers;

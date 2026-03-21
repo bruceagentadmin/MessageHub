@@ -1,5 +1,5 @@
 using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MessageHub.Api.Controllers;
@@ -7,17 +7,17 @@ namespace MessageHub.Api.Controllers;
 [ApiController]
 [Route("api/control")]
 public sealed class ControlCenterController(
-    IMessageOrchestrator orchestrator,
+    UnifiedMessageProcessor processor,
     IChannelSettingsService channelSettingsService,
     IWebhookVerificationService webhookVerificationService) : ControllerBase
 {
     [HttpGet("channels")]
     public ActionResult<IReadOnlyList<ChannelDefinition>> GetChannels()
-        => Ok(orchestrator.GetChannels());
+        => Ok(processor.GetChannels());
 
     [HttpGet("logs")]
     public async Task<ActionResult<IReadOnlyList<MessageLogEntry>>> GetLogs([FromQuery] int count = 50, CancellationToken cancellationToken = default)
-        => Ok(await orchestrator.GetRecentLogsAsync(count, cancellationToken));
+        => Ok(await processor.GetRecentLogsAsync(count, cancellationToken));
 
     [HttpPost("send")]
     public async Task<ActionResult<MessageLogEntry>> Send([FromBody] SendMessageRequest request, CancellationToken cancellationToken)
@@ -27,7 +27,7 @@ public sealed class ControlCenterController(
             return BadRequest("tenantId, channel, content 必填；targetId 可留空以使用最近互動對象");
         }
 
-        var result = await orchestrator.SendManualAsync(request, cancellationToken);
+        var result = await processor.SendManualAsync(request, cancellationToken);
         return Ok(result);
     }
 
@@ -41,9 +41,9 @@ public sealed class ControlCenterController(
         });
 
     [HttpPost("channel-settings")]
-    public async Task<ActionResult<ChannelSettingsDocument>> SaveChannelSettings([FromBody] ChannelSettingsDocument document, CancellationToken cancellationToken)
+    public async Task<ActionResult<ChannelConfig>> SaveChannelSettings([FromBody] ChannelConfig config, CancellationToken cancellationToken)
     {
-        var result = await channelSettingsService.SaveAsync(document, cancellationToken);
+        var result = await channelSettingsService.SaveAsync(config, cancellationToken);
         return Ok(result);
     }
 

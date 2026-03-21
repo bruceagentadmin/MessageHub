@@ -1,16 +1,27 @@
-using MessageHub.Domain;
+using MessageHub.Core;
 
 namespace MessageHub.Application;
 
-public sealed class MessageOrchestrator(
+/// <summary>
+/// 統一訊息處理核心 — 實現 IMessageProcessor，整合訊息處理邏輯。
+/// 對應規格文件中的 UnifiedMessageProcessor。
+/// 同時保留完整的協調功能 (HandleInbound, SendManual, GetLogs 等)。
+/// </summary>
+public sealed class UnifiedMessageProcessor(
     IMessageLogStore logStore,
-    IChannelRegistry channelRegistry,
-    IRecentTargetStore recentTargetStore) : IMessageOrchestrator
+    ChannelFactory channelFactory,
+    IRecentTargetStore recentTargetStore) : IMessageProcessor
 {
+    /// <summary>IMessageProcessor 介面實作 — 接收 InboundMessage 並回傳處理後的回覆文字</summary>
+    public Task<string> ProcessAsync(InboundMessage message, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult($"[POC 回覆] 已收到：{message.Content}");
+    }
+
     public async Task<MessageLogEntry> HandleInboundAsync(string tenantId, string channel, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
     {
-        var client = channelRegistry.Get(channel);
-        var inbound = await client.ParseAsync(tenantId, request, cancellationToken);
+        var client = channelFactory.GetChannel(channel);
+        var inbound = await client.ParseRequestAsync(tenantId, request, cancellationToken);
 
         await recentTargetStore.SetLastTargetAsync(inbound.Channel, inbound.ChatId, inbound.SenderId, cancellationToken);
 
@@ -28,15 +39,17 @@ public sealed class MessageOrchestrator(
 
         await logStore.AddAsync(inboundLog, cancellationToken);
 
+        var replyText = await ProcessAsync(inbound, cancellationToken);
+
         var reply = new OutboundMessage(
             inbound.TenantId,
             inbound.Channel,
             inbound.ChatId,
-            $"[POC 回覆] 已收到：{inbound.Content}",
+            replyText,
             DateTimeOffset.UtcNow,
             "AutoReply");
 
-        var replyLog = await client.SendAsync(reply, cancellationToken);
+        var replyLog = await client.SendAsync(inbound.ChatId, reply, null, cancellationToken);
         await logStore.AddAsync(replyLog, cancellationToken);
 
         return replyLog;
@@ -44,7 +57,7 @@ public sealed class MessageOrchestrator(
 
     public async Task<MessageLogEntry> SendManualAsync(SendMessageRequest request, CancellationToken cancellationToken = default)
     {
-        var client = channelRegistry.Get(request.Channel);
+        var client = channelFactory.GetChannel(request.Channel);
         var targetId = request.TargetId;
 
         if (string.IsNullOrWhiteSpace(targetId))
@@ -78,7 +91,7 @@ public sealed class MessageOrchestrator(
             DateTimeOffset.UtcNow,
             request.TriggeredBy ?? "ControlCenter");
 
-        var log = await client.SendAsync(outbound, cancellationToken);
+        var log = await client.SendAsync(targetId, outbound, null, cancellationToken);
         await logStore.AddAsync(log, cancellationToken);
         return log;
     }
@@ -87,5 +100,5 @@ public sealed class MessageOrchestrator(
         => logStore.GetRecentAsync(count, cancellationToken);
 
     public IReadOnlyList<ChannelDefinition> GetChannels()
-        => channelRegistry.GetDefinitions();
+        => channelFactory.GetDefinitions();
 }

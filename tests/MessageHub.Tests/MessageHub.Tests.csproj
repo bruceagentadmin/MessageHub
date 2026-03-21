@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -20,8 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MessageHub.Api\MessageHub.Api.csproj" />
+    <ProjectReference Include="..\..\src\MessageHub.Core\MessageHub.Core.csproj" />
     <ProjectReference Include="..\..\src\MessageHub.Application\MessageHub.Application.csproj" />
-    <ProjectReference Include="..\..\src\MessageHub.Domain\MessageHub.Domain.csproj" />
     <ProjectReference Include="..\..\src\MessageHub.Infrastructure\MessageHub.Infrastructure.csproj" />
   </ItemGroup>
 

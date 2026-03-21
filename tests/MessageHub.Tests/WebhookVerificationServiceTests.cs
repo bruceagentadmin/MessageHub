@@ -1,5 +1,5 @@
 using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 using MessageHub.Infrastructure;
 
 namespace MessageHub.Tests;
@@ -9,7 +9,7 @@ public class WebhookVerificationServiceTests
     [Fact]
     public async Task VerifyAsync_ShouldReturnNotFound_WhenChannelDoesNotExist()
     {
-        var service = new WebhookVerificationService(new FakeChannelSettingsService(new ChannelSettingsDocument()));
+        var service = new WebhookVerificationService(new ChannelSettingsService(new FakeSettingsStore(new ChannelConfig())));
 
         var result = await service.VerifyAsync("missing");
 
@@ -21,10 +21,10 @@ public class WebhookVerificationServiceTests
     [Fact]
     public async Task VerifyAsync_ShouldReturnMissingWebhookUrl_WhenWebhookUrlIsEmpty()
     {
-        var service = new WebhookVerificationService(new FakeChannelSettingsService(new ChannelSettingsDocument
+        var service = new WebhookVerificationService(new ChannelSettingsService(new FakeSettingsStore(new ChannelConfig
         {
-            Channels = [new ChannelSettingsItem { Id = "Line_Main", Type = "Line", Enabled = true, Config = new Dictionary<string, string>() }]
-        }));
+            Channels = [new ChannelSettings { Id = "Line_Main", Type = "Line", Enabled = true, Parameters = new Dictionary<string, string>() }]
+        })));
 
         var result = await service.VerifyAsync("Line_Main");
 
@@ -35,16 +35,16 @@ public class WebhookVerificationServiceTests
     [Fact]
     public async Task VerifyAsync_ShouldReturnMissingBotToken_WhenTelegramTokenIsEmpty()
     {
-        var service = new WebhookVerificationService(new FakeChannelSettingsService(new ChannelSettingsDocument
+        var service = new WebhookVerificationService(new ChannelSettingsService(new FakeSettingsStore(new ChannelConfig
         {
-            Channels = [new ChannelSettingsItem
+            Channels = [new ChannelSettings
             {
                 Id = "Telegram_Main",
                 Type = "Telegram",
                 Enabled = true,
-                Config = new Dictionary<string, string> { ["WebhookUrl"] = "https://tg.test/webhook" }
+                Parameters = new Dictionary<string, string> { ["WebhookUrl"] = "https://tg.test/webhook" }
             }]
-        }));
+        })));
 
         var result = await service.VerifyAsync("Telegram_Main");
 
@@ -54,15 +54,13 @@ public class WebhookVerificationServiceTests
     }
 }
 
-file sealed class FakeChannelSettingsService(ChannelSettingsDocument document) : IChannelSettingsService
+file sealed class FakeSettingsStore(ChannelConfig config) : IChannelSettingsStore
 {
-    public Task<ChannelSettingsDocument> GetAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(document);
+    public Task<ChannelConfig> LoadAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(config);
 
-    public Task<ChannelSettingsDocument> SaveAsync(ChannelSettingsDocument document, CancellationToken cancellationToken = default)
-        => Task.FromResult(document);
+    public Task<ChannelConfig> SaveAsync(ChannelConfig config, CancellationToken cancellationToken = default)
+        => Task.FromResult(config);
 
-    public IReadOnlyList<ChannelTypeDefinition> GetChannelTypes() => [];
-
-    public string GetSettingsFilePath() => "/tmp/test.json";
+    public string GetFilePath() => "/tmp/test.json";
 }

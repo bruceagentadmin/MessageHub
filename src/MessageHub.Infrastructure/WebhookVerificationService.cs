@@ -1,6 +1,5 @@
 using System.Net.Http.Json;
-using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 
 namespace MessageHub.Infrastructure;
 
@@ -10,15 +9,15 @@ public sealed class WebhookVerificationService(IChannelSettingsService channelSe
 
     public async Task<WebhookVerifyResult> VerifyAsync(string channelId, CancellationToken cancellationToken = default)
     {
-        var document = await channelSettingsService.GetAsync(cancellationToken);
-        var channel = document.Channels.FirstOrDefault(x => x.Id.Equals(channelId, StringComparison.OrdinalIgnoreCase));
+        var config = await channelSettingsService.GetAsync(cancellationToken);
+        var channel = config.Channels.FirstOrDefault(x => x.Id.Equals(channelId, StringComparison.OrdinalIgnoreCase));
 
         if (channel is null)
         {
             return new WebhookVerifyResult(channelId, "Unknown", false, "none", null, "找不到指定頻道設定。");
         }
 
-        var webhookUrl = channel.Config.GetValueOrDefault("WebhookUrl")?.Trim();
+        var webhookUrl = channel.Parameters.GetValueOrDefault("WebhookUrl")?.Trim();
         if (string.IsNullOrWhiteSpace(webhookUrl))
         {
             return new WebhookVerifyResult(channel.Id, channel.Type, false, "none", null, "WebhookUrl 未設定。", null);
@@ -39,7 +38,7 @@ public sealed class WebhookVerificationService(IChannelSettingsService channelSe
 
         if (channel.Type.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
         {
-            var botToken = channel.Config.GetValueOrDefault("BotToken")?.Trim();
+            var botToken = channel.Parameters.GetValueOrDefault("BotToken")?.Trim();
             if (string.IsNullOrWhiteSpace(botToken))
             {
                 return new WebhookVerifyResult(channel.Id, channel.Type, false, "bind", null, "BotToken 未設定。", webhookUrl);

@@ -1,5 +1,5 @@
 using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 
 namespace MessageHub.Tests;
 
@@ -8,28 +8,28 @@ public class ChannelSettingsServiceTests
     [Fact]
     public async Task GetAsync_ShouldNormalizeLegacyLineAndTelegramKeys()
     {
-        var store = new FakeChannelSettingsStore(new ChannelSettingsDocument
+        var store = new FakeChannelSettingsStore(new ChannelConfig
         {
             Channels =
             [
-                new ChannelSettingsItem
+                new ChannelSettings
                 {
                     Id = " Line_Main ",
                     Type = "Line",
                     Enabled = true,
-                    Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["Token"] = " line-token ",
                         ["Secret"] = " line-secret ",
                         ["WebhookUrl"] = " https://line.test/webhook "
                     }
                 },
-                new ChannelSettingsItem
+                new ChannelSettings
                 {
                     Id = " Telegram_Main ",
                     Type = "Telegram",
                     Enabled = true,
-                    Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["Token"] = " telegram-token "
                     }
@@ -42,69 +42,69 @@ public class ChannelSettingsServiceTests
 
         var line = Assert.Single(result.Channels, x => x.Type == "Line");
         Assert.Equal("Line_Main", line.Id);
-        Assert.Equal("line-token", line.Config["ChannelAccessToken"]);
-        Assert.Equal("line-secret", line.Config["ChannelSecret"]);
-        Assert.Equal("https://line.test/webhook", line.Config["WebhookUrl"]);
-        Assert.False(line.Config.ContainsKey("Token"));
-        Assert.False(line.Config.ContainsKey("Secret"));
+        Assert.Equal("line-token", line.Parameters["ChannelAccessToken"]);
+        Assert.Equal("line-secret", line.Parameters["ChannelSecret"]);
+        Assert.Equal("https://line.test/webhook", line.Parameters["WebhookUrl"]);
+        Assert.False(line.Parameters.ContainsKey("Token"));
+        Assert.False(line.Parameters.ContainsKey("Secret"));
 
         var telegram = Assert.Single(result.Channels, x => x.Type == "Telegram");
         Assert.Equal("Telegram_Main", telegram.Id);
-        Assert.Equal("telegram-token", telegram.Config["BotToken"]);
-        Assert.False(telegram.Config.ContainsKey("Token"));
+        Assert.Equal("telegram-token", telegram.Parameters["BotToken"]);
+        Assert.False(telegram.Parameters.ContainsKey("Token"));
     }
 
     [Fact]
     public async Task SaveAsync_ShouldDropInvalidChannelsAndEmptyConfigValues()
     {
-        var store = new FakeChannelSettingsStore(new ChannelSettingsDocument());
+        var store = new FakeChannelSettingsStore(new ChannelConfig());
         var service = new ChannelSettingsService(store);
 
-        var saved = await service.SaveAsync(new ChannelSettingsDocument
+        var saved = await service.SaveAsync(new ChannelConfig
         {
             Channels =
             [
-                new ChannelSettingsItem
+                new ChannelSettings
                 {
                     Id = "  Line_Main  ",
                     Type = "Line",
                     Enabled = true,
-                    Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["ChannelAccessToken"] = "  abc  ",
                         ["ChannelSecret"] = "   ",
                         ["WebhookMode"] = " ngrok "
                     }
                 },
-                new ChannelSettingsItem
+                new ChannelSettings
                 {
                     Id = "   ",
                     Type = "Telegram",
                     Enabled = true,
-                    Config = new Dictionary<string, string>()
+                    Parameters = new Dictionary<string, string>()
                 }
             ]
         });
 
         var channel = Assert.Single(saved.Channels);
         Assert.Equal("Line_Main", channel.Id);
-        Assert.Equal("abc", channel.Config["ChannelAccessToken"]);
-        Assert.Equal("ngrok", channel.Config["WebhookMode"]);
-        Assert.False(channel.Config.ContainsKey("ChannelSecret"));
+        Assert.Equal("abc", channel.Parameters["ChannelAccessToken"]);
+        Assert.Equal("ngrok", channel.Parameters["WebhookMode"]);
+        Assert.False(channel.Parameters.ContainsKey("ChannelSecret"));
     }
 }
 
-file sealed class FakeChannelSettingsStore(ChannelSettingsDocument document) : IChannelSettingsStore
+file sealed class FakeChannelSettingsStore(ChannelConfig config) : IChannelSettingsStore
 {
-    public ChannelSettingsDocument Document { get; private set; } = document;
+    public ChannelConfig Config { get; private set; } = config;
 
-    public Task<ChannelSettingsDocument> LoadAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(Document);
+    public Task<ChannelConfig> LoadAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(Config);
 
-    public Task<ChannelSettingsDocument> SaveAsync(ChannelSettingsDocument document, CancellationToken cancellationToken = default)
+    public Task<ChannelConfig> SaveAsync(ChannelConfig config, CancellationToken cancellationToken = default)
     {
-        Document = document;
-        return Task.FromResult(Document);
+        Config = config;
+        return Task.FromResult(Config);
     }
 
     public string GetFilePath() => "/tmp/test-channel-settings.json";

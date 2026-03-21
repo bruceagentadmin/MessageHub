@@ -1,5 +1,5 @@
 using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 
 namespace MessageHub.Tests;
 
@@ -9,12 +9,12 @@ public class MessageOrchestratorTests
     public async Task SendManualAsync_ShouldUseRecentTarget_WhenTargetIdIsEmpty()
     {
         var logStore = new InMemoryLogStore();
-        var channel = new TestChannelClient("telegram");
-        var registry = new TestChannelRegistry(channel);
+        var channel = new TestChannel("telegram");
+        var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(new RecentTargetInfo("telegram", "chat-123", "Bruce", DateTimeOffset.UtcNow));
-        var orchestrator = new MessageOrchestrator(logStore, registry, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
 
-        var result = await orchestrator.SendManualAsync(new SendMessageRequest(
+        var result = await processor.SendManualAsync(new SendMessageRequest(
             "demo-tenant",
             "telegram",
             "",
@@ -31,12 +31,12 @@ public class MessageOrchestratorTests
     public async Task SendManualAsync_ShouldReturnFailedLog_WhenNoTargetExists()
     {
         var logStore = new InMemoryLogStore();
-        var channel = new TestChannelClient("line");
-        var registry = new TestChannelRegistry(channel);
+        var channel = new TestChannel("line");
+        var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(null);
-        var orchestrator = new MessageOrchestrator(logStore, registry, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
 
-        var result = await orchestrator.SendManualAsync(new SendMessageRequest(
+        var result = await processor.SendManualAsync(new SendMessageRequest(
             "demo-tenant",
             "line",
             "",
@@ -53,12 +53,12 @@ public class MessageOrchestratorTests
     public async Task HandleInboundAsync_ShouldStoreRecentTarget_AndSendAutoReply()
     {
         var logStore = new InMemoryLogStore();
-        var channel = new TestChannelClient("telegram");
-        var registry = new TestChannelRegistry(channel);
+        var channel = new TestChannel("telegram");
+        var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(null);
-        var orchestrator = new MessageOrchestrator(logStore, registry, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
 
-        var result = await orchestrator.HandleInboundAsync("tenant-a", "telegram", new WebhookTextMessageRequest("chat-777", "user-1", "hi"));
+        var result = await processor.HandleInboundAsync("tenant-a", "telegram", new WebhookTextMessageRequest("chat-777", "user-1", "hi"));
         var logs = await logStore.GetRecentAsync(10);
 
         Assert.Equal(DeliveryStatus.Delivered, result.Status);
@@ -83,29 +83,19 @@ file sealed class InMemoryLogStore : IMessageLogStore
         => Task.FromResult<IReadOnlyList<MessageLogEntry>>(_items.TakeLast(count).Reverse().ToList());
 }
 
-file sealed class TestChannelClient(string name) : IChannelClient
+file sealed class TestChannel(string name) : IChannel
 {
     public string Name => name;
     public OutboundMessage? LastSentMessage { get; private set; }
 
-    public Task<InboundMessage> ParseAsync(string tenantId, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
+    public Task<InboundMessage> ParseRequestAsync(string tenantId, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
         => Task.FromResult(new InboundMessage(tenantId, Name, request.ChatId, request.SenderId, request.Content, DateTimeOffset.UtcNow));
 
-    public Task<MessageLogEntry> SendAsync(OutboundMessage message, CancellationToken cancellationToken = default)
+    public Task<MessageLogEntry> SendAsync(string chatId, OutboundMessage message, ChannelSettings? settings = null, CancellationToken cancellationToken = default)
     {
         LastSentMessage = message;
         return Task.FromResult(new MessageLogEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, message.TenantId, Name, MessageDirection.Outbound, DeliveryStatus.Delivered, message.TargetId, message.Content, $"{Name} test sender"));
     }
-}
-
-file sealed class TestChannelRegistry(params IChannelClient[] channels) : IChannelRegistry
-{
-    private readonly Dictionary<string, IChannelClient> _map = channels.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
-
-    public IReadOnlyList<ChannelDefinition> GetDefinitions()
-        => _map.Values.Select(x => new ChannelDefinition(x.Name, true, true, x.Name)).ToList();
-
-    public IChannelClient Get(string channel) => _map[channel];
 }
 
 file sealed class TestRecentTargetStore(RecentTargetInfo? initial) : IRecentTargetStore

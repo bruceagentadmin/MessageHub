@@ -1,4 +1,4 @@
-namespace MessageHub.Domain;
+namespace MessageHub.Core;
 
 public sealed record RecentTargetInfo(
     string Channel,

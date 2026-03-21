@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
-using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 
 namespace MessageHub.Infrastructure;
 

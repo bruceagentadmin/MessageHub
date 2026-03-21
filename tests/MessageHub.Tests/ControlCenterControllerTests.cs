@@ -1,6 +1,6 @@
 using MessageHub.Api.Controllers;
 using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MessageHub.Tests;
@@ -10,7 +10,13 @@ public class ControlCenterControllerTests
     [Fact]
     public async Task Send_ShouldReturnBadRequest_WhenRequiredFieldsMissing()
     {
-        var controller = new ControlCenterController(new FakeOrchestrator(), new FakeSettingsService(), new FakeWebhookVerificationService());
+        var logStore = new FakeLogStore();
+        var factory = new ChannelFactory([new FakeChannel("telegram")]);
+        var recentTargets = new FakeRecentTargetStore();
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
+        var webhookVerification = new FakeWebhookVerificationServiceForController();
+        var controller = new ControlCenterController(processor, settingsService, webhookVerification);
 
         var result = await controller.Send(new SendMessageRequest("", "", "", "", null), default);
 
@@ -21,7 +27,13 @@ public class ControlCenterControllerTests
     [Fact]
     public async Task Send_ShouldReturnOk_WhenPayloadIsValid()
     {
-        var controller = new ControlCenterController(new FakeOrchestrator(), new FakeSettingsService(), new FakeWebhookVerificationService());
+        var logStore = new FakeLogStore();
+        var factory = new ChannelFactory([new FakeChannel("telegram")]);
+        var recentTargets = new FakeRecentTargetStore();
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
+        var webhookVerification = new FakeWebhookVerificationServiceForController();
+        var controller = new ControlCenterController(processor, settingsService, webhookVerification);
 
         var result = await controller.Send(new SendMessageRequest("tenant", "telegram", "chat-1", "hello", "test"), default);
 
@@ -34,7 +46,13 @@ public class ControlCenterControllerTests
     [Fact]
     public async Task VerifyWebhook_ShouldReturnBadRequest_WhenChannelIdMissing()
     {
-        var controller = new ControlCenterController(new FakeOrchestrator(), new FakeSettingsService(), new FakeWebhookVerificationService());
+        var logStore = new FakeLogStore();
+        var factory = new ChannelFactory([new FakeChannel("telegram")]);
+        var recentTargets = new FakeRecentTargetStore();
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
+        var webhookVerification = new FakeWebhookVerificationServiceForController();
+        var controller = new ControlCenterController(processor, settingsService, webhookVerification);
 
         var result = await controller.VerifyWebhook(new WebhookVerifyRequest(""), default);
 
@@ -42,35 +60,41 @@ public class ControlCenterControllerTests
     }
 }
 
-file sealed class FakeOrchestrator : IMessageOrchestrator
+file sealed class FakeLogStore : IMessageLogStore
 {
-    public Task<MessageLogEntry> HandleInboundAsync(string tenantId, string channel, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
-        => Task.FromResult(new MessageLogEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, tenantId, channel, MessageDirection.Inbound, DeliveryStatus.Delivered, request.ChatId, request.Content, "fake"));
-
-    public Task<IReadOnlyList<MessageLogEntry>> GetRecentLogsAsync(int count, CancellationToken cancellationToken = default)
+    public Task AddAsync(MessageLogEntry entry, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<IReadOnlyList<MessageLogEntry>> GetRecentAsync(int count, CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<MessageLogEntry>>([]);
-
-    public IReadOnlyList<ChannelDefinition> GetChannels()
-        => [new ChannelDefinition("telegram", true, true, "fake")];
-
-    public Task<MessageLogEntry> SendManualAsync(SendMessageRequest request, CancellationToken cancellationToken = default)
-        => Task.FromResult(new MessageLogEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, request.TenantId, request.Channel, MessageDirection.Outbound, DeliveryStatus.Delivered, request.TargetId, request.Content, "fake"));
 }
 
-file sealed class FakeSettingsService : IChannelSettingsService
+file sealed class FakeChannel(string name) : IChannel
 {
-    public Task<ChannelSettingsDocument> GetAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(new ChannelSettingsDocument());
+    public string Name => name;
 
-    public Task<ChannelSettingsDocument> SaveAsync(ChannelSettingsDocument document, CancellationToken cancellationToken = default)
-        => Task.FromResult(document);
+    public Task<InboundMessage> ParseRequestAsync(string tenantId, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
+        => Task.FromResult(new InboundMessage(tenantId, Name, request.ChatId, request.SenderId, request.Content, DateTimeOffset.UtcNow));
 
-    public IReadOnlyList<ChannelTypeDefinition> GetChannelTypes() => [];
-
-    public string GetSettingsFilePath() => "/tmp/test.json";
+    public Task<MessageLogEntry> SendAsync(string chatId, OutboundMessage message, ChannelSettings? settings = null, CancellationToken cancellationToken = default)
+        => Task.FromResult(new MessageLogEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, message.TenantId, Name, MessageDirection.Outbound, DeliveryStatus.Delivered, message.TargetId, message.Content, "fake"));
 }
 
-file sealed class FakeWebhookVerificationService : IWebhookVerificationService
+file sealed class FakeRecentTargetStore : IRecentTargetStore
+{
+    public Task SetLastTargetAsync(string channel, string targetId, string? displayName = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<RecentTargetInfo?> GetLastTargetAsync(string channel, CancellationToken cancellationToken = default)
+        => Task.FromResult<RecentTargetInfo?>(null);
+}
+
+file sealed class FakeSettingsStoreForController : IChannelSettingsStore
+{
+    public Task<ChannelConfig> LoadAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new ChannelConfig());
+    public Task<ChannelConfig> SaveAsync(ChannelConfig config, CancellationToken cancellationToken = default)
+        => Task.FromResult(config);
+    public string GetFilePath() => "/tmp/test.json";
+}
+
+file sealed class FakeWebhookVerificationServiceForController : IWebhookVerificationService
 {
     public Task<WebhookVerifyResult> VerifyAsync(string channelId, CancellationToken cancellationToken = default)
         => Task.FromResult(new WebhookVerifyResult(channelId, "Line", true, "verify", 200, "ok"));

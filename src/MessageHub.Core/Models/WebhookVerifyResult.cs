@@ -1,6 +1,4 @@
-namespace MessageHub.Domain;
-
-public sealed record WebhookVerifyRequest(string ChannelId);
+namespace MessageHub.Core;
 
 public sealed record WebhookVerifyResult(
     string ChannelId,

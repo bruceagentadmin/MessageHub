@@ -1,6 +1,5 @@
 using System.Text.Json;
-using MessageHub.Application;
-using MessageHub.Domain;
+using MessageHub.Core;
 
 namespace MessageHub.Infrastructure;
 
@@ -22,39 +21,39 @@ public sealed class JsonChannelSettingsStore : IChannelSettingsStore
         _filePath = Path.Combine(dataDirectory, "channel-settings.json");
     }
 
-    public async Task<ChannelSettingsDocument> LoadAsync(CancellationToken cancellationToken = default)
+    public async Task<ChannelConfig> LoadAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_filePath))
         {
-            var defaultDocument = CreateDefault();
-            await SaveAsync(defaultDocument, cancellationToken);
-            return defaultDocument;
+            var defaultConfig = CreateDefault();
+            await SaveAsync(defaultConfig, cancellationToken);
+            return defaultConfig;
         }
 
         await using var stream = File.OpenRead(_filePath);
-        var document = await JsonSerializer.DeserializeAsync<ChannelSettingsDocument>(stream, JsonOptions, cancellationToken);
-        return document ?? new ChannelSettingsDocument();
+        var config = await JsonSerializer.DeserializeAsync<ChannelConfig>(stream, JsonOptions, cancellationToken);
+        return config ?? new ChannelConfig();
     }
 
-    public async Task<ChannelSettingsDocument> SaveAsync(ChannelSettingsDocument document, CancellationToken cancellationToken = default)
+    public async Task<ChannelConfig> SaveAsync(ChannelConfig config, CancellationToken cancellationToken = default)
     {
         await using var stream = File.Create(_filePath);
-        await JsonSerializer.SerializeAsync(stream, document, JsonOptions, cancellationToken);
-        return document;
+        await JsonSerializer.SerializeAsync(stream, config, JsonOptions, cancellationToken);
+        return config;
     }
 
     public string GetFilePath() => _filePath;
 
-    private static ChannelSettingsDocument CreateDefault() => new()
+    private static ChannelConfig CreateDefault() => new()
     {
         Channels =
         [
-            new ChannelSettingsItem
+            new ChannelSettings
             {
                 Id = "Line_Main",
                 Type = "Line",
                 Enabled = true,
-                Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["ChannelAccessToken"] = "",
                     ["ChannelSecret"] = "",
@@ -62,12 +61,12 @@ public sealed class JsonChannelSettingsStore : IChannelSettingsStore
                     ["WebhookMode"] = "devtunnel"
                 }
             },
-            new ChannelSettingsItem
+            new ChannelSettings
             {
                 Id = "Telegram_Service",
                 Type = "Telegram",
                 Enabled = true,
-                Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["BotToken"] = "",
                     ["WebhookUrl"] = "https://3vmcf3ql-5001.jpe1.devtunnels.ms/api/telegram/webhook",

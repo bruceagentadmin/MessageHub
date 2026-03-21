@@ -1,4 +1,4 @@
-using MessageHub.Domain;
+using MessageHub.Core;
 
 namespace MessageHub.Application;
 
@@ -34,15 +34,30 @@ public sealed class ChannelSettingsService(IChannelSettingsStore store) : IChann
             ])
     ];
 
-    public async Task<ChannelSettingsDocument> GetAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// ICommonParameterProvider 實作 — 依鍵值取得配置參數。
+    /// 支援的 key: "ChannelConfig" 回傳 ChannelConfig。
+    /// </summary>
+    public async Task<T?> GetParameterByKeyAsync<T>(string key, CancellationToken cancellationToken = default) where T : class
     {
-        var document = await store.LoadAsync(cancellationToken);
-        return NormalizeDocument(document);
+        if (key == "ChannelConfig" && typeof(T) == typeof(ChannelConfig))
+        {
+            var config = await GetAsync(cancellationToken);
+            return config as T;
+        }
+
+        return null;
     }
 
-    public async Task<ChannelSettingsDocument> SaveAsync(ChannelSettingsDocument document, CancellationToken cancellationToken = default)
+    public async Task<ChannelConfig> GetAsync(CancellationToken cancellationToken = default)
     {
-        var normalized = NormalizeDocument(document);
+        var config = await store.LoadAsync(cancellationToken);
+        return NormalizeConfig(config);
+    }
+
+    public async Task<ChannelConfig> SaveAsync(ChannelConfig config, CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizeConfig(config);
         return await store.SaveAsync(normalized, cancellationToken);
     }
 
@@ -50,49 +65,49 @@ public sealed class ChannelSettingsService(IChannelSettingsStore store) : IChann
 
     public string GetSettingsFilePath() => store.GetFilePath();
 
-    private static ChannelSettingsDocument NormalizeDocument(ChannelSettingsDocument document)
+    private static ChannelConfig NormalizeConfig(ChannelConfig config)
     {
-        document.Channels ??= [];
-        document.Channels = document.Channels
+        config.Channels ??= [];
+        config.Channels = config.Channels
             .Where(x => !string.IsNullOrWhiteSpace(x.Id) && !string.IsNullOrWhiteSpace(x.Type))
-            .Select(NormalizeItem)
+            .Select(NormalizeSettings)
             .ToList();
 
-        return document;
+        return config;
     }
 
-    private static ChannelSettingsItem NormalizeItem(ChannelSettingsItem item)
+    private static ChannelSettings NormalizeSettings(ChannelSettings settings)
     {
-        var config = item.Config
+        var parameters = settings.Parameters
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
             .ToDictionary(pair => pair.Key.Trim(), pair => pair.Value.Trim(), StringComparer.OrdinalIgnoreCase);
 
-        if (item.Type.Equals("Line", StringComparison.OrdinalIgnoreCase))
+        if (settings.Type.Equals("Line", StringComparison.OrdinalIgnoreCase))
         {
-            Rename(config, "Token", "ChannelAccessToken");
-            Rename(config, "Secret", "ChannelSecret");
+            Rename(parameters, "Token", "ChannelAccessToken");
+            Rename(parameters, "Secret", "ChannelSecret");
         }
-        else if (item.Type.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
+        else if (settings.Type.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
         {
-            Rename(config, "Token", "BotToken");
+            Rename(parameters, "Token", "BotToken");
         }
 
-        return new ChannelSettingsItem
+        return new ChannelSettings
         {
-            Id = item.Id.Trim(),
-            Type = item.Type.Trim(),
-            Enabled = item.Enabled,
-            Config = config
+            Id = settings.Id.Trim(),
+            Type = settings.Type.Trim(),
+            Enabled = settings.Enabled,
+            Parameters = parameters
         };
     }
 
-    private static void Rename(IDictionary<string, string> config, string oldKey, string newKey)
+    private static void Rename(IDictionary<string, string> parameters, string oldKey, string newKey)
     {
-        if (!config.ContainsKey(newKey) && config.TryGetValue(oldKey, out var value))
+        if (!parameters.ContainsKey(newKey) && parameters.TryGetValue(oldKey, out var value))
         {
-            config[newKey] = value;
+            parameters[newKey] = value;
         }
 
-        config.Remove(oldKey);
+        parameters.Remove(oldKey);
     }
 }
