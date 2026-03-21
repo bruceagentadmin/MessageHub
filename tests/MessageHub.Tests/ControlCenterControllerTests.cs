@@ -11,9 +11,10 @@ public class ControlCenterControllerTests
     public async Task Send_ShouldReturnBadRequest_WhenRequiredFieldsMissing()
     {
         var logStore = new FakeLogStore();
+        var messageBus = new ControllerFakeMessageBus();
         var factory = new ChannelFactory([new FakeChannel("telegram")]);
         var recentTargets = new FakeRecentTargetStore();
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
         var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
         var webhookVerification = new FakeWebhookVerificationServiceForController();
         var controller = new ControlCenterController(processor, settingsService, webhookVerification);
@@ -28,9 +29,10 @@ public class ControlCenterControllerTests
     public async Task Send_ShouldReturnOk_WhenPayloadIsValid()
     {
         var logStore = new FakeLogStore();
+        var messageBus = new ControllerFakeMessageBus();
         var factory = new ChannelFactory([new FakeChannel("telegram")]);
         var recentTargets = new FakeRecentTargetStore();
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
         var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
         var webhookVerification = new FakeWebhookVerificationServiceForController();
         var controller = new ControlCenterController(processor, settingsService, webhookVerification);
@@ -41,15 +43,17 @@ public class ControlCenterControllerTests
         var log = Assert.IsType<MessageLogEntry>(ok.Value);
         Assert.Equal("telegram", log.Channel);
         Assert.Equal("chat-1", log.TargetId);
+        Assert.Equal(DeliveryStatus.Pending, log.Status);
     }
 
     [Fact]
     public async Task VerifyWebhook_ShouldReturnBadRequest_WhenChannelIdMissing()
     {
         var logStore = new FakeLogStore();
+        var messageBus = new ControllerFakeMessageBus();
         var factory = new ChannelFactory([new FakeChannel("telegram")]);
         var recentTargets = new FakeRecentTargetStore();
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
         var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
         var webhookVerification = new FakeWebhookVerificationServiceForController();
         var controller = new ControlCenterController(processor, settingsService, webhookVerification);
@@ -57,6 +61,36 @@ public class ControlCenterControllerTests
         var result = await controller.VerifyWebhook(new WebhookVerifyRequest(""), default);
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+}
+
+file sealed class ControllerFakeMessageBus : IMessageBus
+{
+    public ValueTask PublishOutboundAsync(OutboundMessage message, CancellationToken cancellationToken = default)
+        => ValueTask.CompletedTask;
+
+    public async IAsyncEnumerable<OutboundMessage> ConsumeOutboundAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    public ValueTask PublishInboundAsync(InboundMessage message, CancellationToken cancellationToken = default)
+        => ValueTask.CompletedTask;
+
+    public async IAsyncEnumerable<InboundMessage> ConsumeInboundAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    public ValueTask PublishDeadLetterAsync(DeadLetterMessage message, CancellationToken cancellationToken = default)
+        => ValueTask.CompletedTask;
+
+    public async IAsyncEnumerable<DeadLetterMessage> ConsumeDeadLetterAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 }
 
@@ -74,8 +108,8 @@ file sealed class FakeChannel(string name) : IChannel
     public Task<InboundMessage> ParseRequestAsync(string tenantId, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
         => Task.FromResult(new InboundMessage(tenantId, Name, request.ChatId, request.SenderId, request.Content, DateTimeOffset.UtcNow));
 
-    public Task<MessageLogEntry> SendAsync(string chatId, OutboundMessage message, ChannelSettings? settings = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(new MessageLogEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, message.TenantId, Name, MessageDirection.Outbound, DeliveryStatus.Delivered, message.TargetId, message.Content, "fake"));
+    public Task SendAsync(string chatId, OutboundMessage message, ChannelSettings? settings = null, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }
 
 file sealed class FakeRecentTargetStore : IRecentTargetStore

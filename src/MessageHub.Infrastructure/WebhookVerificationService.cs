@@ -10,25 +10,27 @@ public sealed class WebhookVerificationService(IChannelSettingsService channelSe
     public async Task<WebhookVerifyResult> VerifyAsync(string channelId, CancellationToken cancellationToken = default)
     {
         var config = await channelSettingsService.GetAsync(cancellationToken);
-        var channel = config.Channels.FirstOrDefault(x => x.Id.Equals(channelId, StringComparison.OrdinalIgnoreCase));
+        config.Channels.TryGetValue(channelId, out var channel);
 
         if (channel is null)
         {
             return new WebhookVerifyResult(channelId, "Unknown", false, "none", null, "找不到指定頻道設定。");
         }
 
+        var channelType = channelId;
+
         var webhookUrl = channel.Parameters.GetValueOrDefault("WebhookUrl")?.Trim();
         if (string.IsNullOrWhiteSpace(webhookUrl))
         {
-            return new WebhookVerifyResult(channel.Id, channel.Type, false, "none", null, "WebhookUrl 未設定。", null);
+            return new WebhookVerifyResult(channelId, channelType, false, "none", null, "WebhookUrl 未設定。", null);
         }
 
-        if (channel.Type.Equals("Line", StringComparison.OrdinalIgnoreCase))
+        if (channelType.Equals("Line", StringComparison.OrdinalIgnoreCase))
         {
             using var response = await _httpClient.PostAsJsonAsync(webhookUrl, new { destination = "verify", events = Array.Empty<object>() }, cancellationToken);
             return new WebhookVerifyResult(
-                channel.Id,
-                channel.Type,
+                channelId,
+                channelType,
                 response.IsSuccessStatusCode,
                 "verify",
                 (int)response.StatusCode,
@@ -36,12 +38,12 @@ public sealed class WebhookVerificationService(IChannelSettingsService channelSe
                 webhookUrl);
         }
 
-        if (channel.Type.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
+        if (channelType.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
         {
             var botToken = channel.Parameters.GetValueOrDefault("BotToken")?.Trim();
             if (string.IsNullOrWhiteSpace(botToken))
             {
-                return new WebhookVerifyResult(channel.Id, channel.Type, false, "bind", null, "BotToken 未設定。", webhookUrl);
+                return new WebhookVerifyResult(channelId, channelType, false, "bind", null, "BotToken 未設定。", webhookUrl);
             }
 
             var apiUrl = $"https://api.telegram.org/bot{botToken}/setWebhook?url={Uri.EscapeDataString(webhookUrl)}";
@@ -49,8 +51,8 @@ public sealed class WebhookVerificationService(IChannelSettingsService channelSe
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
             return new WebhookVerifyResult(
-                channel.Id,
-                channel.Type,
+                channelId,
+                channelType,
                 response.IsSuccessStatusCode,
                 "bind",
                 (int)response.StatusCode,
@@ -59,6 +61,6 @@ public sealed class WebhookVerificationService(IChannelSettingsService channelSe
                 body);
         }
 
-        return new WebhookVerifyResult(channel.Id, channel.Type, false, "none", null, "目前只支援 Line / Telegram 驗證。", webhookUrl);
+        return new WebhookVerifyResult(channelId, channelType, false, "none", null, "目前只支援 Line / Telegram 驗證。", webhookUrl);
     }
 }

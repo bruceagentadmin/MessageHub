@@ -7,5 +7,5 @@ namespace MessageHub.Core;
 public interface INotificationService
 {
     /// <summary>根據租戶與頻道發送通知文字</summary>
-    Task SendGlobalNotificationAsync(string tenantId, string channel, string message, CancellationToken cancellationToken = default);
+    Task SendNotificationAsync(string tenantId, string channel, string message, CancellationToken cancellationToken = default);
 }

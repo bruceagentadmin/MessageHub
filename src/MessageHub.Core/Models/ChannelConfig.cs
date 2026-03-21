@@ -7,5 +7,5 @@ namespace MessageHub.Core;
 public sealed class ChannelConfig
 {
     public Guid TenantId { get; set; }
-    public List<ChannelSettings> Channels { get; set; } = new();
+    public Dictionary<string, ChannelSettings> Channels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

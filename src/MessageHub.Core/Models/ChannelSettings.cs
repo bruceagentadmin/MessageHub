@@ -6,8 +6,6 @@ namespace MessageHub.Core;
 /// </summary>
 public sealed class ChannelSettings
 {
-    public string Id { get; set; } = string.Empty;
-    public string Type { get; set; } = string.Empty;
     public bool Enabled { get; set; }
     public Dictionary<string, string> Parameters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

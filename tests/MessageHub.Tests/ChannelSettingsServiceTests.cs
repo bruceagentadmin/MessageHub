@@ -11,11 +11,10 @@ public class ChannelSettingsServiceTests
         var store = new FakeChannelSettingsStore(new ChannelConfig
         {
             Channels =
-            [
-                new ChannelSettings
+            new Dictionary<string, ChannelSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                [" line "] = new ChannelSettings
                 {
-                    Id = " Line_Main ",
-                    Type = "Line",
                     Enabled = true,
                     Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
@@ -24,34 +23,31 @@ public class ChannelSettingsServiceTests
                         ["WebhookUrl"] = " https://line.test/webhook "
                     }
                 },
-                new ChannelSettings
+                [" telegram "] = new ChannelSettings
                 {
-                    Id = " Telegram_Main ",
-                    Type = "Telegram",
                     Enabled = true,
                     Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["Token"] = " telegram-token "
                     }
                 }
-            ]
+            }
         });
 
         var service = new ChannelSettingsService(store);
         var result = await service.GetAsync();
 
-        var line = Assert.Single(result.Channels, x => x.Type == "Line");
-        Assert.Equal("Line_Main", line.Id);
-        Assert.Equal("line-token", line.Parameters["ChannelAccessToken"]);
-        Assert.Equal("line-secret", line.Parameters["ChannelSecret"]);
-        Assert.Equal("https://line.test/webhook", line.Parameters["WebhookUrl"]);
-        Assert.False(line.Parameters.ContainsKey("Token"));
-        Assert.False(line.Parameters.ContainsKey("Secret"));
+        var line = Assert.Single(result.Channels, x => x.Key.Equals("line", StringComparison.OrdinalIgnoreCase));
+        Assert.True(line.Value.Enabled);
+        Assert.Equal("line-token", line.Value.Parameters["ChannelAccessToken"]);
+        Assert.Equal("line-secret", line.Value.Parameters["ChannelSecret"]);
+        Assert.Equal("https://line.test/webhook", line.Value.Parameters["WebhookUrl"]);
+        Assert.False(line.Value.Parameters.ContainsKey("Token"));
+        Assert.False(line.Value.Parameters.ContainsKey("Secret"));
 
-        var telegram = Assert.Single(result.Channels, x => x.Type == "Telegram");
-        Assert.Equal("Telegram_Main", telegram.Id);
-        Assert.Equal("telegram-token", telegram.Parameters["BotToken"]);
-        Assert.False(telegram.Parameters.ContainsKey("Token"));
+        var telegram = Assert.Single(result.Channels, x => x.Key.Equals("telegram", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("telegram-token", telegram.Value.Parameters["BotToken"]);
+        Assert.False(telegram.Value.Parameters.ContainsKey("Token"));
     }
 
     [Fact]
@@ -63,11 +59,10 @@ public class ChannelSettingsServiceTests
         var saved = await service.SaveAsync(new ChannelConfig
         {
             Channels =
-            [
-                new ChannelSettings
+            new Dictionary<string, ChannelSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["  line  "] = new ChannelSettings
                 {
-                    Id = "  Line_Main  ",
-                    Type = "Line",
                     Enabled = true,
                     Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
@@ -76,21 +71,19 @@ public class ChannelSettingsServiceTests
                         ["WebhookMode"] = " ngrok "
                     }
                 },
-                new ChannelSettings
+                ["   "] = new ChannelSettings
                 {
-                    Id = "   ",
-                    Type = "Telegram",
                     Enabled = true,
                     Parameters = new Dictionary<string, string>()
                 }
-            ]
+            }
         });
 
         var channel = Assert.Single(saved.Channels);
-        Assert.Equal("Line_Main", channel.Id);
-        Assert.Equal("abc", channel.Parameters["ChannelAccessToken"]);
-        Assert.Equal("ngrok", channel.Parameters["WebhookMode"]);
-        Assert.False(channel.Parameters.ContainsKey("ChannelSecret"));
+        Assert.Equal("line", channel.Key);
+        Assert.Equal("abc", channel.Value.Parameters["ChannelAccessToken"]);
+        Assert.Equal("ngrok", channel.Value.Parameters["WebhookMode"]);
+        Assert.False(channel.Value.Parameters.ContainsKey("ChannelSecret"));
     }
 }
 

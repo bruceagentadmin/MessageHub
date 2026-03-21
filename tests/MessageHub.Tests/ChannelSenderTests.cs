@@ -9,18 +9,21 @@ namespace MessageHub.Tests;
 public class ChannelSenderTests
 {
     [Fact]
-    public async Task TelegramChannel_ShouldReturnFailed_WhenBotTokenMissing()
+    public async Task TelegramChannel_ShouldThrow_WhenBotTokenMissing()
     {
         var service = new ChannelSettingsService(new FakeChannelSettingsStoreForSender(new ChannelConfig
         {
-            Channels = [new ChannelSettings { Id = "tg", Type = "Telegram", Enabled = true, Parameters = new Dictionary<string, string>() }]
+            Channels = new Dictionary<string, ChannelSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["telegram"] = new ChannelSettings { Enabled = true, Parameters = new Dictionary<string, string>() }
+            }
         }));
         var channel = new TelegramChannel(service, new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))));
 
-        var result = await channel.SendAsync("chat-1", new OutboundMessage("tenant", "telegram", "chat-1", "hello", DateTimeOffset.UtcNow));
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => channel.SendAsync("chat-1", new OutboundMessage("tenant", "telegram", "chat-1", "hello")));
 
-        Assert.Equal(DeliveryStatus.Failed, result.Status);
-        Assert.Contains("BotToken 未設定", result.Details);
+        Assert.Contains("BotToken 未設定", exception.Message);
     }
 
     [Fact]
@@ -29,13 +32,14 @@ public class ChannelSenderTests
         HttpRequestMessage? captured = null;
         var service = new ChannelSettingsService(new FakeChannelSettingsStoreForSender(new ChannelConfig
         {
-            Channels = [new ChannelSettings
+            Channels = new Dictionary<string, ChannelSettings>(StringComparer.OrdinalIgnoreCase)
             {
-                Id = "line",
-                Type = "Line",
-                Enabled = true,
-                Parameters = new Dictionary<string, string> { ["ChannelAccessToken"] = "line-token" }
-            }]
+                ["line"] = new ChannelSettings
+                {
+                    Enabled = true,
+                    Parameters = new Dictionary<string, string> { ["ChannelAccessToken"] = "line-token" }
+                }
+            }
         }));
         var channel = new LineChannel(service, new HttpClient(new StubHttpMessageHandler(req =>
         {
@@ -46,9 +50,8 @@ public class ChannelSenderTests
             };
         })));
 
-        var result = await channel.SendAsync("user-1", new OutboundMessage("tenant", "line", "user-1", "hello", DateTimeOffset.UtcNow));
+        await channel.SendAsync("user-1", new OutboundMessage("tenant", "line", "user-1", "hello"));
 
-        Assert.Equal(DeliveryStatus.Delivered, result.Status);
         Assert.NotNull(captured);
         Assert.Equal("https://api.line.me/v2/bot/message/push", captured!.RequestUri!.ToString());
         Assert.Equal("Bearer", captured.Headers.Authorization?.Scheme);

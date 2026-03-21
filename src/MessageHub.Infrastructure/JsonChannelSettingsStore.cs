@@ -47,11 +47,10 @@ public sealed class JsonChannelSettingsStore : IChannelSettingsStore
     private static ChannelConfig CreateDefault() => new()
     {
         Channels =
-        [
-            new ChannelSettings
+        new Dictionary<string, ChannelSettings>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["line"] = new ChannelSettings
             {
-                Id = "Line_Main",
-                Type = "Line",
                 Enabled = true,
                 Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -61,10 +60,8 @@ public sealed class JsonChannelSettingsStore : IChannelSettingsStore
                     ["WebhookMode"] = "devtunnel"
                 }
             },
-            new ChannelSettings
+            ["telegram"] = new ChannelSettings
             {
-                Id = "Telegram_Service",
-                Type = "Telegram",
                 Enabled = true,
                 Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -73,6 +70,6 @@ public sealed class JsonChannelSettingsStore : IChannelSettingsStore
                     ["WebhookMode"] = "devtunnel"
                 }
             }
-        ]
+        }
     };
 }

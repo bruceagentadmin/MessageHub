@@ -3,7 +3,6 @@ namespace MessageHub.Core;
 public sealed record OutboundMessage(
     string TenantId,
     string Channel,
-    string TargetId,
+    string ChatId,
     string Content,
-    DateTimeOffset CreatedAt,
-    string? TriggeredBy = null);
+    object? Metadata = null);

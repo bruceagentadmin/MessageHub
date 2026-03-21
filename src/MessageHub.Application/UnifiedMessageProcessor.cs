@@ -10,7 +10,8 @@ namespace MessageHub.Application;
 public sealed class UnifiedMessageProcessor(
     IMessageLogStore logStore,
     ChannelFactory channelFactory,
-    IRecentTargetStore recentTargetStore) : IMessageProcessor
+    IRecentTargetStore recentTargetStore,
+    IMessageBus messageBus) : IMessageProcessor
 {
     /// <summary>IMessageProcessor 介面實作 — 接收 InboundMessage 並回傳處理後的回覆文字</summary>
     public Task<string> ProcessAsync(InboundMessage message, CancellationToken cancellationToken = default)
@@ -45,14 +46,11 @@ public sealed class UnifiedMessageProcessor(
             inbound.TenantId,
             inbound.Channel,
             inbound.ChatId,
-            replyText,
-            DateTimeOffset.UtcNow,
-            "AutoReply");
+            replyText);
 
-        var replyLog = await client.SendAsync(inbound.ChatId, reply, null, cancellationToken);
-        await logStore.AddAsync(replyLog, cancellationToken);
+        await messageBus.PublishOutboundAsync(reply, cancellationToken);
 
-        return replyLog;
+        return inboundLog;
     }
 
     public async Task<MessageLogEntry> SendManualAsync(SendMessageRequest request, CancellationToken cancellationToken = default)
@@ -88,12 +86,24 @@ public sealed class UnifiedMessageProcessor(
             request.Channel,
             targetId,
             request.Content,
-            DateTimeOffset.UtcNow,
-            request.TriggeredBy ?? "ControlCenter");
+            new { CreatedAt = DateTimeOffset.UtcNow, TriggeredBy = request.TriggeredBy ?? "ControlCenter" });
 
-        var log = await client.SendAsync(targetId, outbound, null, cancellationToken);
-        await logStore.AddAsync(log, cancellationToken);
-        return log;
+        await messageBus.PublishOutboundAsync(outbound, cancellationToken);
+
+        var pendingLog = new MessageLogEntry(
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow,
+            request.TenantId,
+            request.Channel,
+            MessageDirection.Outbound,
+            DeliveryStatus.Pending,
+            targetId,
+            request.Content,
+            "control center",
+            $"Queued by {request.TriggeredBy ?? "ControlCenter"}");
+
+        await logStore.AddAsync(pendingLog, cancellationToken);
+        return pendingLog;
     }
 
     public Task<IReadOnlyList<MessageLogEntry>> GetRecentLogsAsync(int count, CancellationToken cancellationToken = default)

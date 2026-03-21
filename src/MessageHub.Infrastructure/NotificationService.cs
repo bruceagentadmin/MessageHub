@@ -14,13 +14,12 @@ public sealed class NotificationService(
     /// <summary>
     /// 從配置中尋找 NotificationTargetId 並透過 MessageBus 發送訊息。
     /// </summary>
-    public async Task SendGlobalNotificationAsync(string tenantId, string channelName, string message, CancellationToken cancellationToken = default)
+    public async Task SendNotificationAsync(string tenantId, string channelName, string message, CancellationToken cancellationToken = default)
     {
         var config = await channelSettingsService.GetAsync(cancellationToken);
-        var settings = config.Channels.FirstOrDefault(
-            x => x.Enabled && x.Type.Equals(channelName, StringComparison.OrdinalIgnoreCase));
+        config.Channels.TryGetValue(channelName, out var settings);
 
-        if (settings is null)
+        if (settings is not { Enabled: true })
         {
             throw new InvalidOperationException($"頻道 {channelName} 未啟用或不存在");
         }
@@ -38,9 +37,7 @@ public sealed class NotificationService(
             tenantId,
             channelName,
             targetId,
-            message,
-            DateTimeOffset.UtcNow,
-            "NotificationService");
+            message);
 
         await messageBus.PublishOutboundAsync(outbound, cancellationToken);
     }

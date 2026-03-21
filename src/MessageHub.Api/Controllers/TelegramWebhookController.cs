@@ -1,12 +1,14 @@
 using System.Text.Json;
+using MessageHub.Application;
 using MessageHub.Core;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace MessageHub.Api.Controllers;
 
 [ApiController]
 [Route("api/telegram")]
-public sealed class TelegramWebhookController(IMessageLogStore logStore, IRecentTargetStore recentTargetStore) : ControllerBase
+public sealed class TelegramWebhookController(UnifiedMessageProcessor processor, ILogger<TelegramWebhookController> logger) : ControllerBase
 {
     [HttpPost("webhook")]
     public async Task<IActionResult> Handle([FromBody] JsonElement data, CancellationToken cancellationToken)
@@ -20,14 +22,10 @@ public sealed class TelegramWebhookController(IMessageLogStore logStore, IRecent
             if (data.TryGetProperty("message", out var message))
             {
                 if (message.TryGetProperty("chat", out var chat) && chat.TryGetProperty("id", out var chatIdElement))
-                {
                     chatId = chatIdElement.ToString();
-                }
 
                 if (message.TryGetProperty("text", out var textElement))
-                {
                     text = textElement.GetString();
-                }
 
                 if (message.TryGetProperty("from", out var from))
                 {
@@ -39,24 +37,23 @@ public sealed class TelegramWebhookController(IMessageLogStore logStore, IRecent
         }
         catch
         {
+            // Non-message events — ignore parse failures
         }
 
-        if (!string.IsNullOrWhiteSpace(chatId))
+        if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(text))
         {
-            await recentTargetStore.SetLastTargetAsync("telegram", chatId, displayName, cancellationToken);
+            return Ok();
         }
 
-        await logStore.AddAsync(new MessageLogEntry(
-            Guid.NewGuid(),
-            DateTimeOffset.UtcNow,
-            "telegram-default",
-            "telegram",
-            MessageDirection.Inbound,
-            DeliveryStatus.Delivered,
-            chatId ?? "telegram-unknown",
-            text ?? "[Telegram webhook verify / non-message event]",
-            "telegram webhook",
-            string.IsNullOrWhiteSpace(displayName) ? null : $"DisplayName={displayName}"), cancellationToken);
+        try
+        {
+            var request = new WebhookTextMessageRequest(chatId, displayName ?? chatId, text);
+            await processor.HandleInboundAsync("telegram-default", "telegram", request, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Telegram webhook 處理失敗");
+        }
 
         return Ok();
     }

@@ -9,10 +9,11 @@ public class MessageOrchestratorTests
     public async Task SendManualAsync_ShouldUseRecentTarget_WhenTargetIdIsEmpty()
     {
         var logStore = new InMemoryLogStore();
+        var messageBus = new FakeMessageBus();
         var channel = new TestChannel("telegram");
         var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(new RecentTargetInfo("telegram", "chat-123", "Bruce", DateTimeOffset.UtcNow));
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
 
         var result = await processor.SendManualAsync(new SendMessageRequest(
             "demo-tenant",
@@ -21,20 +22,23 @@ public class MessageOrchestratorTests
             "hello",
             "test"));
 
-        Assert.Equal(DeliveryStatus.Delivered, result.Status);
+        Assert.Equal(DeliveryStatus.Pending, result.Status);
         Assert.Equal("chat-123", result.TargetId);
-        Assert.Equal("hello", channel.LastSentMessage?.Content);
-        Assert.Equal("chat-123", channel.LastSentMessage?.TargetId);
+        Assert.Null(channel.LastSentMessage);
+        Assert.Single(messageBus.OutboundMessages);
+        Assert.Equal("hello", messageBus.OutboundMessages[0].Content);
+        Assert.Equal("chat-123", messageBus.OutboundMessages[0].ChatId);
     }
 
     [Fact]
     public async Task SendManualAsync_ShouldReturnFailedLog_WhenNoTargetExists()
     {
         var logStore = new InMemoryLogStore();
+        var messageBus = new FakeMessageBus();
         var channel = new TestChannel("line");
         var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(null);
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
 
         var result = await processor.SendManualAsync(new SendMessageRequest(
             "demo-tenant",
@@ -47,25 +51,63 @@ public class MessageOrchestratorTests
         Assert.Equal("unknown", result.TargetId);
         Assert.Contains("找不到可用的 targetId", result.Details);
         Assert.Null(channel.LastSentMessage);
+        Assert.Empty(messageBus.OutboundMessages);
     }
 
     [Fact]
     public async Task HandleInboundAsync_ShouldStoreRecentTarget_AndSendAutoReply()
     {
         var logStore = new InMemoryLogStore();
+        var messageBus = new FakeMessageBus();
         var channel = new TestChannel("telegram");
         var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(null);
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets);
+        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
 
         var result = await processor.HandleInboundAsync("tenant-a", "telegram", new WebhookTextMessageRequest("chat-777", "user-1", "hi"));
         var logs = await logStore.GetRecentAsync(10);
 
         Assert.Equal(DeliveryStatus.Delivered, result.Status);
-        Assert.Equal("chat-777", channel.LastSentMessage?.TargetId);
-        Assert.Contains("已收到：hi", channel.LastSentMessage?.Content);
-        Assert.Equal(2, logs.Count);
+        Assert.Single(messageBus.OutboundMessages);
+        Assert.Equal("chat-777", messageBus.OutboundMessages[0].ChatId);
+        Assert.Contains("已收到：hi", messageBus.OutboundMessages[0].Content);
+        Assert.Single(logs);
         Assert.Equal("chat-777", recentTargets.Stored?.TargetId);
+    }
+}
+
+file sealed class FakeMessageBus : IMessageBus
+{
+    public List<OutboundMessage> OutboundMessages { get; } = [];
+
+    public ValueTask PublishOutboundAsync(OutboundMessage message, CancellationToken cancellationToken = default)
+    {
+        OutboundMessages.Add(message);
+        return ValueTask.CompletedTask;
+    }
+
+    public async IAsyncEnumerable<OutboundMessage> ConsumeOutboundAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    public ValueTask PublishInboundAsync(InboundMessage message, CancellationToken cancellationToken = default)
+        => ValueTask.CompletedTask;
+
+    public async IAsyncEnumerable<InboundMessage> ConsumeInboundAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask;
+        yield break;
+    }
+
+    public ValueTask PublishDeadLetterAsync(DeadLetterMessage message, CancellationToken cancellationToken = default)
+        => ValueTask.CompletedTask;
+
+    public async IAsyncEnumerable<DeadLetterMessage> ConsumeDeadLetterAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 }
 
@@ -91,10 +133,10 @@ file sealed class TestChannel(string name) : IChannel
     public Task<InboundMessage> ParseRequestAsync(string tenantId, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
         => Task.FromResult(new InboundMessage(tenantId, Name, request.ChatId, request.SenderId, request.Content, DateTimeOffset.UtcNow));
 
-    public Task<MessageLogEntry> SendAsync(string chatId, OutboundMessage message, ChannelSettings? settings = null, CancellationToken cancellationToken = default)
+    public Task SendAsync(string chatId, OutboundMessage message, ChannelSettings? settings = null, CancellationToken cancellationToken = default)
     {
         LastSentMessage = message;
-        return Task.FromResult(new MessageLogEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, message.TenantId, Name, MessageDirection.Outbound, DeliveryStatus.Delivered, message.TargetId, message.Content, $"{Name} test sender"));
+        return Task.CompletedTask;
     }
 }
 

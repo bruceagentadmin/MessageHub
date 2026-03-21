@@ -7,6 +7,8 @@
 
 ## 1. 系統架構圖 (System Overview)
 
+本系統採異步解耦設計，業務系統（Notification 或 Webhook 回應）將訊息推送到系統內部的 **Message Bus**，再由後台 **Channel Manager** 根據頻道類型分發。
+
 ```mermaid
 graph TD
     subgraph platform ["外部平台 (Line, TG, Email, etc.)"]
@@ -20,19 +22,30 @@ graph TD
 
     subgraph logic ["多租戶處理核心"]
         PP[ICommonParameterProvider]
-        CF[ChannelFactory]
         MP[MessageProcessor]
         NS[NotificationService]
+        
+        subgraph bus_layer ["異步傳輸層"]
+            MB[(MessageBus / Channel)]
+            CM[ChannelManager / Worker]
+        end
+        
+        CF[ChannelFactory]
     end
 
     EP <-->|Webhook / API| WC
     CR --> NS
+    
     WC --> PP
     NS --> PP
-    PP --> CF
-    CF --> MP
-    MP --> EP
-    NS --> CF
+    
+    WC --> MP
+    MP -.->|Publish| MB
+    NS -.->|Publish| MB
+    
+    MB -.->|Consume| CM
+    CM --> CF
+    CF --> EP
 ```
 
 ---
@@ -46,6 +59,21 @@ classDiagram
         +Name: string
         +ParseRequestAsync(request, tenantId) InboundMessage
         +SendAsync(chatId, message, settings) Task
+    }
+
+    class IMessageBus {
+        <<interface>>
+        +PublishOutboundAsync(message) ValueTask
+        +ConsumeOutboundAsync(ct) IAsyncEnumerable
+    }
+
+    class OutboundMessage {
+        <<record>>
+        +TenantId: Guid
+        +Channel: string
+        +ChatId: string
+        +Content: string
+        +Metadata: object
     }
 
     class ICommonParameterProvider {
@@ -63,125 +91,107 @@ classDiagram
         +SendNotificationAsync(tenantId, channel, msg) Task
     }
 
-    class ChannelConfig {
-        +TenantId: Guid
-        +Channels: Map~string, ChannelSettings~
+    class ChannelManager {
+        <<worker>>
+        +ExecuteAsync(ct) Task
     }
 
     IChannel <|.. LineChannel
     IChannel <|.. TelegramChannel
     IMessageProcessor <|.. UnifiedProcessor
 
-    ChannelFactory --> IChannel : 建立
-    WebhookController --> ICommonParameterProvider
-    WebhookController --> ChannelFactory
+    ChannelManager --> IMessageBus : 監聽
+    ChannelManager --> ChannelFactory : 建立頻道
+    NotificationService --> IMessageBus : 推送
+    UnifiedProcessor --> IMessageBus : 推送
     WebhookController --> IMessageProcessor
-    NotificationService --> ICommonParameterProvider
-    NotificationService --> ChannelFactory
+    WebhookController --> ICommonParameterProvider
 ```
 
 ---
 
 ## 3. 循序圖 (Sequence Diagrams)
 
-### 3.1 使用者訊息發送與系統回應 (Inbound)
+### 3.1 使用者訊息發送與匯流排流轉 (Inbound & Outbound Bus Flow)
+
+當 Webhook 收到訊息後，會經過處理器產生回覆，該回覆會推送到匯流排進行異步發送。
 
 ```mermaid
 sequenceDiagram
     participant User as 使用者
-    participant Plat as 通訊平台
     participant WC as WebhookController
-    participant PP as ICommonParameterProvider
-    participant CF as ChannelFactory
     participant MP as MessageProcessor
-    participant Ch as IChannel實例
+    participant Bus as MessageBus (Queue)
+    participant CM as ChannelManager (Worker)
+    participant Ch as IChannel實體
+    participant Plat as 通訊平台
 
     User->>Plat: 發送訊息
-    Plat->>WC: Webhook POST (tenantId, channel)
-    WC->>PP: GetParameterByKeyAsync<ChannelConfig>("ChannelConfig")
-    PP-->>WC: ChannelConfig (JSON)
-    WC->>CF: GetChannel(channel)
-    CF-->>WC: IChannel 實例
-    WC->>Ch: ParseRequestAsync(request)
-    Ch-->>WC: InboundMessage
+    Plat->>WC: Webhook POST
     WC->>MP: ProcessAsync(message)
     MP-->>WC: 回覆文字
-    WC->>Ch: SendAsync(chatId, Response)
+    WC->>Bus: PublishOutboundAsync(msg)
+    Note over Bus: 具備異步緩衝
+    WC-->>Plat: HTTP 200 OK (前端立即響應)
+    
+    CM->>Bus: ConsumeOutboundAsync()
+    Bus-->>CM: 取得下一則訊息
+    CM->>Ch: SendAsync(chatId, msg)
     Ch->>Plat: API Call (Send Message)
     Plat->>User: 顯示回覆
 ```
 
-#### 3.1.1 處理流程圖 (Inbound Flowchart)
+#### 3.1.1 異步處理流程圖 (Inbound Async Flowchart)
 
 ```mermaid
 flowchart LR
-    Start([通訊平台 Webhook 呼叫]) --> Receive[WebhookController 接收請求]
-    Receive --> LoadConfig[透過 ParameterProvider 載入租戶頻道配置]
-    LoadConfig --> GetChannel[ChannelFactory 建立對應 IChannel 實例]
-    GetChannel --> Parse[IChannel 解析 Request 為 InboundMessage]
-    Parse --> Process[IMessageProcessor 處理訊息並產生回覆文字]
-    Process --> Send[IChannel 發送 SendAsync]
-    Send --> Platform[呼叫外部平台 API]
-    Platform --> End([使用者收到回覆])
+    Start([平台 Webhook 呼叫]) --> Receive[WebhookController 接收]
+    Receive --> Process[IMessageProcessor 產生回覆]
+    Process --> Push[推送到 MessageBus / Queue]
+    Push --> Worker[ChannelManager 背景取得訊息]
+    Worker --> LoadConfig[讀取租戶金鑰 / ParameterProvider]
+    LoadConfig --> Send[IChannel 發送 SendAsync]
+    Send --> End([使用者收到回覆])
 ```
 
-### 3.2 系統主動定時發送通知 (Outbound/Notification)
+### 3.2 系統主動定時發送通知 (Schedule to Bus)
 
 ```mermaid
 sequenceDiagram
     participant Cron as 定時排程器
     participant NS as NotificationService
-    participant PP as ICommonParameterProvider
-    participant CF as ChannelFactory
-    participant Ch as IChannel實例
-    participant Plat as 通訊平台
+    participant Bus as MessageBus (Queue)
+    participant CM as ChannelManager (Worker)
+    participant Ch as IChannel實體
     participant User as 使用者
 
-    Cron->>NS: 觸發通知任務 (tenantId, msg)
-    NS->>PP: GetParameterByKeyAsync<ChannelConfig>("ChannelConfig")
-    PP-->>NS: ChannelConfig (JSON)
-    NS->>CF: GetChannel(channel)
-    CF-->>NS: IChannel 實例
-    NS->>Ch: SendAsync(targetChatId, msg)
-    Ch->>Plat: API Call (Send Notification)
-    Plat->>User: 顯示通知訊息
-```
-
-#### 3.2.1 定時通知流程圖 (Notification Flowchart)
-
-```mermaid
-flowchart LR
-    Start([定時排程觸發]) --> NS[NotificationService 啟動任務]
-    NS --> LoadConfig[透過 ParameterProvider 載入租戶頻道配置]
-    LoadConfig --> GetChannel[ChannelFactory 建立對應 IChannel 實例]
-    GetChannel --> GetTarget[從配置中取得 NotificationTargetId]
-    GetTarget --> Send[IChannel 發送 SendAsync]
-    Send --> Platform[呼叫外部平台 API]
-    Platform --> End([使用者收到通知訊息])
+    Cron->>NS: 觸發通知任務
+    NS->>Bus: PublishOutboundAsync(tenant, channel, msg)
+    CM->>Bus: ConsumeOutboundAsync()
+    CM->>Ch: SendAsync(target, msg)
+    Ch-->>User: 顯示通知訊息
 ```
 
 ---
 
-## 4. 訊息接收決策流程圖 (Flowchart)
+## 4. 異步機制與技術細節 (Implementation Tips)
 
-```mermaid
-flowchart TD
-    Start([收到訊息/觸發通知]) --> CheckType{來源類型?}
-    
-    CheckType -- Webhook --> LoadTenant[依 URL 載入 ChannelConfig]
-    CheckType -- Scheduler --> LoadTenant
-    
-    LoadTenant --> CheckEnable{該頻道已啟用?}
-    CheckEnable -- 否 --> End([結束])
-    CheckEnable -- 是 --> Parse[解析訊息/準備內容]
-    
-    Parse --> Dispatch{處理邏輯}
-    Dispatch -- 關鍵字/AI --> Respond[產生回覆文字]
-    Dispatch -- 定時通知 --> Respond
-    
-    Respond --> Send[呼叫平台 API 發送]
-    Send --> End
-```
+本設計借鑒異步與解耦理念，確保 C# 多租戶環境的高性能：
+
+1.  **System.Threading.Channels**：作為 `MessageBus` 的底層，支援非同步、線程安全且高性能的生產者/消費者模型。
+2.  **Keyed Services (.NET 8+)**：`ChannelFactory` 內部利用 `AddKeyedTransient` 依據字串（如 "telegram"）動態解析 `IChannel` 實體。
+3.  **異步發送 (Fire and Forget)**：業務層（NotificationService）不需等待外部 API 響應，發送至 Bus 後即完成，極大化 API 的吞吐量。
+4.  **多租戶適配**：`OutboundMessage` 內含 `TenantId`，`ChannelManager` 在調度時會向 `ICommonParameterProvider` 正確請求對應租戶的密鑰。
+
+---
+
+## 5. 失敗處理與彈性 (Resilience)
+
+為了確保在生產環境的穩定性，發送流程具備以下容錯能力：
+
+*   **Polly 重試機制**：針對網路瞬斷 (Transient errors)，在 `IChannel.SendAsync` 內部實施「指數退避」重試。
+*   **死信佇列 (Dead Letter Queue, DLQ)**：發送多次（例如 3 次）仍失敗的訊息，應從 Bus 中取出並存入資料庫，標記為 `Failed` 供人工追蹤。
+*   **流量控制 (Rate Limiting)**：結合 `SemaphoreSlim`，確保單一頻道的發送速率不超過平台限流閥值（如 Line/Telegram 的每秒限制）。
 
 ---
 
@@ -222,18 +232,19 @@ flowchart TD
 | 類別/介面名稱 | 用途簡述 | 類別描述（功能與屬性） |
 | :--- | :--- | :--- |
 | `IChannel` | 頻道通用介面 | 定義所有通訊頻道的基礎行為。<br>• `Name`: 頻道識別名稱 (如 Line, Telegram)。<br>• `ParseRequestAsync`: 解析來自平台的 Webhook 請求並轉換為 `InboundMessage`。<br>• `SendAsync`: 發送 `OutboundMessage` 到指定的 `ChatId`。 |
+| `IMessageBus` | 訊息匯流排 | 提供生產者/消費者模型的高效匯流排。<br>• `PublishOutboundAsync`: 推送出站訊息。<br>• `ConsumeOutboundAsync`: 供背景 Worker 異步存取訊息。 |
 | `ICommonParameterProvider` | 參數提供者 | 負責依鍵值 (Key) 異步獲取多租戶環境下的配置參數。<br>• `GetParameterByKeyAsync<T>`: 泛型方法，用於讀取特定的配置物件 (如 `ChannelConfig`)。 |
 | `IMessageProcessor` | 訊息處理介面 | 定義對接收到的訊息進行商業邏輯處理的入口。<br>• `ProcessAsync`: 接收 `InboundMessage` 並回傳處理後的回覆文字。 |
-| `INotificationService` | 通知服務介面 | 定義系統主動發送通知的標準行為。<br>• `SendGlobalNotificationAsync`: 根據租戶與頻道發送通知文字。 |
+| `INotificationService` | 通知服務介面 | 定義系統主動發送通知的標準行為。<br>• `SendNotificationAsync`: 將通知訊息推送到 `MessageBus` 進行異步分發。 |
 
 ### 6.2 核心實作與邏輯 (Core Logic)
 
 | 類別/介面名稱 | 用途簡述 | 類別描述（功能與屬性） |
 | :--- | :--- | :--- |
-| `ChannelFactory` | 頻道工廠 | 負責根據配置中的頻道名稱動態建立或取得對應的 `IChannel` 實例。<br>• `GetChannel`: 根據輸入字串回傳對應的頻道物件，若不支援則拋出異常。 |
-| `UnifiedMessageProcessor` | 統一訊息處理核心 | 實現 `IMessageProcessor`，整合關鍵字、AI 分析或自動化腳本來決定回覆內容。<br>• `ProcessAsync`: 核心邏輯所在，封裝了處理進站訊息的所有判斷流程。 |
-| `NotificationService` | 主動通知服務實作 | 實現 `INotificationService`。結合 `ChannelFactory` 與 `ICommonParameterProvider`。<br>• `SendGlobalNotificationAsync`: 從配置中尋找 `NotificationTargetId` 並發送訊息。 |
-| `WebhookController` | Webhook 進入點 | 繼承自 `ControllerBase`，負責接收外部 HTTP POST 請求。<br>• `Handle`: 協調 `ParameterProvider` (取得配置)、`Channel` (解析訊息)、`Processor` (產生內容) 並完成發送。 |
+| `ChannelManager` | 異步頻道管理員 | 全域背景 Worker，負責從 Bus 讀取訊息並路由發送。<br>• 整合 `Polly` 進行重試。<br>• 處理 `Dead Letter Queue` 邏輯。 |
+| `ChannelFactory` | 頻道工廠 | 負責根據配置中的頻道名稱動態建立或取得對應的 `IChannel` 實例。<br>• 使用 Keyed Services 動態對應字串與類別。 |
+| `UnifiedMessageProcessor` | 統一訊息處理核心 | 實現 `IMessageProcessor`，整合關鍵字、AI 分析或自動化腳本來決定回覆內容。 |
+| `WebhookController` | Webhook 進入點 | 接收外部請求。與舊版不同之處在於，它現在將產生回覆推送到 `IMessageBus` 而非直接調用發送。 |
 
 ### 6.3 資料模型 (Data Models)
 

@@ -1,18 +1,19 @@
 using System.Text.Json;
+using MessageHub.Application;
 using MessageHub.Core;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace MessageHub.Api.Controllers;
 
 [ApiController]
 [Route("api/line")]
-public sealed class LineWebhookController(IMessageLogStore logStore, IRecentTargetStore recentTargetStore) : ControllerBase
+public sealed class LineWebhookController(UnifiedMessageProcessor processor, ILogger<LineWebhookController> logger) : ControllerBase
 {
     [HttpPost("webhook")]
     public async Task<IActionResult> Handle([FromBody] JsonElement data, CancellationToken cancellationToken)
     {
         string? userId = null;
-        string? replyToken = null;
         string? text = null;
 
         try
@@ -21,42 +22,32 @@ public sealed class LineWebhookController(IMessageLogStore logStore, IRecentTarg
             {
                 var firstEvent = events[0];
 
-                if (firstEvent.TryGetProperty("replyToken", out var replyTokenElement))
-                {
-                    replyToken = replyTokenElement.GetString();
-                }
-
                 if (firstEvent.TryGetProperty("source", out var source) && source.TryGetProperty("userId", out var userIdElement))
-                {
                     userId = userIdElement.GetString();
-                }
 
                 if (firstEvent.TryGetProperty("message", out var message) && message.TryGetProperty("text", out var textElement))
-                {
                     text = textElement.GetString();
-                }
             }
         }
         catch
         {
+            // Non-text events — ignore parse failures
         }
 
-        if (!string.IsNullOrWhiteSpace(userId))
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(text))
         {
-            await recentTargetStore.SetLastTargetAsync("line", userId, null, cancellationToken);
+            return Ok();
         }
 
-        await logStore.AddAsync(new MessageLogEntry(
-            Guid.NewGuid(),
-            DateTimeOffset.UtcNow,
-            "line-default",
-            "line",
-            MessageDirection.Inbound,
-            DeliveryStatus.Delivered,
-            userId ?? "line-unknown",
-            text ?? "[LINE webhook verify / non-text event]",
-            "line webhook",
-            $"ReplyToken={(string.IsNullOrWhiteSpace(replyToken) ? "none" : "present")}"), cancellationToken);
+        try
+        {
+            var request = new WebhookTextMessageRequest(userId, userId, text);
+            await processor.HandleInboundAsync("line-default", "line", request, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Line webhook 處理失敗");
+        }
 
         return Ok();
     }

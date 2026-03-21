@@ -13,5 +13,5 @@ public interface IChannel
     Task<InboundMessage> ParseRequestAsync(string tenantId, WebhookTextMessageRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>發送 OutboundMessage 到指定的 ChatId</summary>
-    Task<MessageLogEntry> SendAsync(string chatId, OutboundMessage message, ChannelSettings? settings = null, CancellationToken cancellationToken = default);
+    Task SendAsync(string chatId, OutboundMessage message, ChannelSettings? settings = null, CancellationToken cancellationToken = default);
 }

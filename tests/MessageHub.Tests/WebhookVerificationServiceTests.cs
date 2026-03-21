@@ -23,10 +23,13 @@ public class WebhookVerificationServiceTests
     {
         var service = new WebhookVerificationService(new ChannelSettingsService(new FakeSettingsStore(new ChannelConfig
         {
-            Channels = [new ChannelSettings { Id = "Line_Main", Type = "Line", Enabled = true, Parameters = new Dictionary<string, string>() }]
+            Channels = new Dictionary<string, ChannelSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["line"] = new ChannelSettings { Enabled = true, Parameters = new Dictionary<string, string>() }
+            }
         })));
 
-        var result = await service.VerifyAsync("Line_Main");
+        var result = await service.VerifyAsync("line");
 
         Assert.False(result.Success);
         Assert.Contains("WebhookUrl 未設定", result.Message);
@@ -37,16 +40,17 @@ public class WebhookVerificationServiceTests
     {
         var service = new WebhookVerificationService(new ChannelSettingsService(new FakeSettingsStore(new ChannelConfig
         {
-            Channels = [new ChannelSettings
+            Channels = new Dictionary<string, ChannelSettings>(StringComparer.OrdinalIgnoreCase)
             {
-                Id = "Telegram_Main",
-                Type = "Telegram",
-                Enabled = true,
-                Parameters = new Dictionary<string, string> { ["WebhookUrl"] = "https://tg.test/webhook" }
-            }]
+                ["telegram"] = new ChannelSettings
+                {
+                    Enabled = true,
+                    Parameters = new Dictionary<string, string> { ["WebhookUrl"] = "https://tg.test/webhook" }
+                }
+            }
         })));
 
-        var result = await service.VerifyAsync("Telegram_Main");
+        var result = await service.VerifyAsync("telegram");
 
         Assert.False(result.Success);
         Assert.Equal("bind", result.Action);

@@ -67,35 +67,35 @@ public sealed class ChannelSettingsService(IChannelSettingsStore store) : IChann
 
     private static ChannelConfig NormalizeConfig(ChannelConfig config)
     {
-        config.Channels ??= [];
+        config.Channels ??= new Dictionary<string, ChannelSettings>(StringComparer.OrdinalIgnoreCase);
         config.Channels = config.Channels
-            .Where(x => !string.IsNullOrWhiteSpace(x.Id) && !string.IsNullOrWhiteSpace(x.Type))
-            .Select(NormalizeSettings)
-            .ToList();
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+            .ToDictionary(
+                x => x.Key.Trim(),
+                x => NormalizeSettings(x.Key.Trim(), x.Value),
+                StringComparer.OrdinalIgnoreCase);
 
         return config;
     }
 
-    private static ChannelSettings NormalizeSettings(ChannelSettings settings)
+    private static ChannelSettings NormalizeSettings(string channelName, ChannelSettings settings)
     {
         var parameters = settings.Parameters
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
             .ToDictionary(pair => pair.Key.Trim(), pair => pair.Value.Trim(), StringComparer.OrdinalIgnoreCase);
 
-        if (settings.Type.Equals("Line", StringComparison.OrdinalIgnoreCase))
+        if (channelName.Equals("Line", StringComparison.OrdinalIgnoreCase))
         {
             Rename(parameters, "Token", "ChannelAccessToken");
             Rename(parameters, "Secret", "ChannelSecret");
         }
-        else if (settings.Type.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
+        else if (channelName.Equals("Telegram", StringComparison.OrdinalIgnoreCase))
         {
             Rename(parameters, "Token", "BotToken");
         }
 
         return new ChannelSettings
         {
-            Id = settings.Id.Trim(),
-            Type = settings.Type.Trim(),
             Enabled = settings.Enabled,
             Parameters = parameters
         };
