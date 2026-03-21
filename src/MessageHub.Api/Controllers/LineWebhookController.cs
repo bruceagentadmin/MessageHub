@@ -7,7 +7,7 @@ namespace MessageHub.Api.Controllers;
 
 [ApiController]
 [Route("api/line")]
-public sealed class LineWebhookController(IMessageLogStore logStore) : ControllerBase
+public sealed class LineWebhookController(IMessageLogStore logStore, IRecentTargetStore recentTargetStore) : ControllerBase
 {
     [HttpPost("webhook")]
     public async Task<IActionResult> Handle([FromBody] JsonElement data, CancellationToken cancellationToken)
@@ -40,7 +40,11 @@ public sealed class LineWebhookController(IMessageLogStore logStore) : Controlle
         }
         catch
         {
-            // 驗證階段先保守吃掉解析錯誤，確保 LINE 收到 200。
+        }
+
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            await recentTargetStore.SetLastTargetAsync("line", userId, null, cancellationToken);
         }
 
         await logStore.AddAsync(new MessageLogEntry(

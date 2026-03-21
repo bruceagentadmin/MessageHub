@@ -28,3 +28,9 @@ public interface IMessageOrchestrator
     Task<IReadOnlyList<MessageLogEntry>> GetRecentLogsAsync(int count, CancellationToken cancellationToken = default);
     IReadOnlyList<ChannelDefinition> GetChannels();
 }
+
+public interface IRecentTargetStore
+{
+    Task SetLastTargetAsync(string channel, string targetId, string? displayName = null, CancellationToken cancellationToken = default);
+    Task<RecentTargetInfo?> GetLastTargetAsync(string channel, CancellationToken cancellationToken = default);
+}
