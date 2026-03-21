@@ -60,7 +60,7 @@ public sealed class ChannelManager(
             var channel = channelFactory.GetChannel(message.Channel);
 
             var config = await channelSettingsService.GetAsync(stoppingToken);
-            config.Channels.TryGetValue(message.Channel, out var settings);
+            var settings = ChannelSettingsResolver.FindSettings(config, message.Channel);
             if (settings is not { Enabled: true })
             {
                 throw new InvalidOperationException($"頻道 {message.Channel} 未啟用或不存在");

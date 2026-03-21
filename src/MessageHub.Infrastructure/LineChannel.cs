@@ -53,6 +53,7 @@ public sealed class LineChannel(IChannelSettingsService channelSettingsService, 
     private async Task<ChannelSettings?> GetSettingsAsync(CancellationToken cancellationToken)
     {
         var config = await _channelSettingsService.GetAsync(cancellationToken);
-        return config.Channels.TryGetValue("line", out var settings) && settings.Enabled ? settings : null;
+        var settings = ChannelSettingsResolver.FindSettings(config, "line");
+        return settings is { Enabled: true } ? settings : null;
     }
 }

@@ -45,6 +45,7 @@ public sealed class TelegramChannel(IChannelSettingsService channelSettingsServi
     private async Task<ChannelSettings?> GetSettingsAsync(CancellationToken cancellationToken)
     {
         var config = await _channelSettingsService.GetAsync(cancellationToken);
-        return config.Channels.TryGetValue("telegram", out var settings) && settings.Enabled ? settings : null;
+        var settings = ChannelSettingsResolver.FindSettings(config, "telegram");
+        return settings is { Enabled: true } ? settings : null;
     }
 }
