@@ -22,9 +22,9 @@ public sealed class ControlCenterController(
     [HttpPost("send")]
     public async Task<ActionResult<MessageLogEntry>> Send([FromBody] SendMessageRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.TenantId) || string.IsNullOrWhiteSpace(request.Channel) || string.IsNullOrWhiteSpace(request.TargetId) || string.IsNullOrWhiteSpace(request.Content))
+        if (string.IsNullOrWhiteSpace(request.TenantId) || string.IsNullOrWhiteSpace(request.Channel) || string.IsNullOrWhiteSpace(request.Content))
         {
-            return BadRequest("tenantId, channel, targetId, content 必填");
+            return BadRequest("tenantId, channel, content 必填；targetId 可留空以使用最近互動對象");
         }
 
         var result = await orchestrator.SendManualAsync(request, cancellationToken);

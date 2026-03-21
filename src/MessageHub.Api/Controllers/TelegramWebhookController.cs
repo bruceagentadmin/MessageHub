@@ -7,13 +7,14 @@ namespace MessageHub.Api.Controllers;
 
 [ApiController]
 [Route("api/telegram")]
-public sealed class TelegramWebhookController(IMessageLogStore logStore) : ControllerBase
+public sealed class TelegramWebhookController(IMessageLogStore logStore, IRecentTargetStore recentTargetStore) : ControllerBase
 {
     [HttpPost("webhook")]
     public async Task<IActionResult> Handle([FromBody] JsonElement data, CancellationToken cancellationToken)
     {
         string? chatId = null;
         string? text = null;
+        string? displayName = null;
 
         try
         {
@@ -28,11 +29,22 @@ public sealed class TelegramWebhookController(IMessageLogStore logStore) : Contr
                 {
                     text = textElement.GetString();
                 }
+
+                if (message.TryGetProperty("from", out var from))
+                {
+                    var firstName = from.TryGetProperty("first_name", out var fn) ? fn.GetString() : string.Empty;
+                    var lastName = from.TryGetProperty("last_name", out var ln) ? ln.GetString() : string.Empty;
+                    displayName = $"{firstName} {lastName}".Trim();
+                }
             }
         }
         catch
         {
-            // POC 階段先保證 webhook 不因解析錯誤而回非 200。
+        }
+
+        if (!string.IsNullOrWhiteSpace(chatId))
+        {
+            await recentTargetStore.SetLastTargetAsync("telegram", chatId, displayName, cancellationToken);
         }
 
         await logStore.AddAsync(new MessageLogEntry(
@@ -44,7 +56,8 @@ public sealed class TelegramWebhookController(IMessageLogStore logStore) : Contr
             DeliveryStatus.Delivered,
             chatId ?? "telegram-unknown",
             text ?? "[Telegram webhook verify / non-message event]",
-            "telegram webhook"), cancellationToken);
+            "telegram webhook",
+            string.IsNullOrWhiteSpace(displayName) ? null : $"DisplayName={displayName}"), cancellationToken);
 
         return Ok();
     }

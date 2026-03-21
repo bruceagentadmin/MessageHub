@@ -2,12 +2,17 @@ using MessageHub.Domain;
 
 namespace MessageHub.Application;
 
-public sealed class MessageOrchestrator(IMessageLogStore logStore, IChannelRegistry channelRegistry) : IMessageOrchestrator
+public sealed class MessageOrchestrator(
+    IMessageLogStore logStore,
+    IChannelRegistry channelRegistry,
+    IRecentTargetStore recentTargetStore) : IMessageOrchestrator
 {
     public async Task<MessageLogEntry> HandleInboundAsync(string tenantId, string channel, WebhookTextMessageRequest request, CancellationToken cancellationToken = default)
     {
         var client = channelRegistry.Get(channel);
         var inbound = await client.ParseAsync(tenantId, request, cancellationToken);
+
+        await recentTargetStore.SetLastTargetAsync(inbound.Channel, inbound.ChatId, inbound.SenderId, cancellationToken);
 
         var inboundLog = new MessageLogEntry(
             Guid.NewGuid(),
@@ -40,10 +45,35 @@ public sealed class MessageOrchestrator(IMessageLogStore logStore, IChannelRegis
     public async Task<MessageLogEntry> SendManualAsync(SendMessageRequest request, CancellationToken cancellationToken = default)
     {
         var client = channelRegistry.Get(request.Channel);
+        var targetId = request.TargetId;
+
+        if (string.IsNullOrWhiteSpace(targetId))
+        {
+            var recent = await recentTargetStore.GetLastTargetAsync(request.Channel, cancellationToken);
+            targetId = recent?.TargetId;
+        }
+
+        if (string.IsNullOrWhiteSpace(targetId))
+        {
+            var failedLog = new MessageLogEntry(
+                Guid.NewGuid(),
+                DateTimeOffset.UtcNow,
+                request.TenantId,
+                request.Channel,
+                MessageDirection.Outbound,
+                DeliveryStatus.Failed,
+                "unknown",
+                request.Content,
+                "control center",
+                "找不到可用的 targetId，且該頻道沒有最近互動對象");
+            await logStore.AddAsync(failedLog, cancellationToken);
+            return failedLog;
+        }
+
         var outbound = new OutboundMessage(
             request.TenantId,
             request.Channel,
-            request.TargetId,
+            targetId,
             request.Content,
             DateTimeOffset.UtcNow,
             request.TriggeredBy ?? "ControlCenter");

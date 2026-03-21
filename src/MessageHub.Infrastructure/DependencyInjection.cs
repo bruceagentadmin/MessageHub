@@ -8,6 +8,7 @@ public static class DependencyInjection
     public static IServiceCollection AddMessageHubInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<IMessageLogStore, InMemoryMessageLogStore>();
+        services.AddSingleton<IRecentTargetStore, RecentTargetStore>();
         services.AddSingleton<IChannelSettingsStore, JsonChannelSettingsStore>();
         services.AddSingleton<IChannelSettingsService, ChannelSettingsService>();
         services.AddSingleton<IWebhookVerificationService, WebhookVerificationService>();
