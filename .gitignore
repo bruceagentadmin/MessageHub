@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.swp
+*.DS_Store
+data/channel-settings.json
+!data/channel-settings.example.json
+
+src/data/

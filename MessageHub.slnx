@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MessageHub.Api/MessageHub.Api.csproj" />
+    <Project Path="src/MessageHub.Application/MessageHub.Application.csproj" />
+    <Project Path="src/MessageHub.Domain/MessageHub.Domain.csproj" />
+    <Project Path="src/MessageHub.Infrastructure/MessageHub.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MessageHub.Tests/MessageHub.Tests.csproj" />
+  </Folder>
+</Solution>
