@@ -193,14 +193,34 @@ Telegram: POST /api/telegram/webhook</pre>
     }
 
     function normalizeSettings(payload) {
+      const source = payload?.channels || payload?.Channels || [];
+      if (Array.isArray(source)) {
+        return {
+          channels: source.map(item => ({
+            id: item.id || item.Id || '',
+            type: item.type || item.Type || inferChannelType(item.id || item.Id || ''),
+            enabled: item.enabled ?? item.Enabled ?? true,
+            config: item.config || item.Config || {}
+          }))
+        };
+      }
+
       return {
-        channels: (payload.channels || payload.Channels || []).map(item => ({
-          id: item.id || item.Id || '',
-          type: item.type || item.Type || 'Telegram',
-          enabled: item.enabled ?? item.Enabled ?? true,
-          config: item.config || item.Config || {}
+        channels: Object.entries(source).map(([id, item]) => ({
+          id,
+          type: inferChannelType(id, item?.parameters || item?.Parameters || {}),
+          enabled: item?.enabled ?? item?.Enabled ?? true,
+          config: item?.parameters || item?.Parameters || {}
         }))
       };
+    }
+
+    function inferChannelType(id, config = {}) {
+      const text = `${id || ''} ${Object.keys(config || {}).join(' ')}`.toLowerCase();
+      if (text.includes('telegram') || text.includes('bottoken')) return 'Telegram';
+      if (text.includes('line') || text.includes('channelaccesstoken') || text.includes('channelsecret')) return 'Line';
+      if (text.includes('email') || text.includes('smtp') || text.includes('host')) return 'Email';
+      return 'Telegram';
     }
 
     function getTypeDefinition(type) {
@@ -426,7 +446,13 @@ Telegram: POST /api/telegram/webhook</pre>
     async function saveSettings() {
       const status = document.getElementById('settingsStatus');
       status.className = 'small status';
-      const payload = { channels: collectChannelForms().filter(x => x.id && x.type) };
+      const payload = { channels: {} };
+      collectChannelForms().filter(x => x.id && x.type).forEach(item => {
+        payload.channels[item.id] = {
+          enabled: item.enabled,
+          parameters: item.config || {}
+        };
+      });
       const res = await fetch('/api/control/channel-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

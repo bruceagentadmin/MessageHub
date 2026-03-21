@@ -30,8 +30,13 @@ public sealed class JsonChannelSettingsStore : IChannelSettingsStore
             return defaultConfig;
         }
 
-        await using var stream = File.OpenRead(_filePath);
-        var config = await JsonSerializer.DeserializeAsync<ChannelConfig>(stream, JsonOptions, cancellationToken);
+        var json = await File.ReadAllTextAsync(_filePath, cancellationToken);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new ChannelConfig();
+        }
+
+        var config = TryDeserializeCurrent(json) ?? TryDeserializeLegacy(json);
         return config ?? new ChannelConfig();
     }
 
@@ -43,6 +48,51 @@ public sealed class JsonChannelSettingsStore : IChannelSettingsStore
     }
 
     public string GetFilePath() => _filePath;
+
+    private static ChannelConfig? TryDeserializeCurrent(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<ChannelConfig>(json, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static ChannelConfig? TryDeserializeLegacy(string json)
+    {
+        try
+        {
+            var legacy = JsonSerializer.Deserialize<LegacyChannelConfig>(json, JsonOptions);
+            if (legacy?.Channels is null)
+            {
+                return null;
+            }
+
+            var result = new ChannelConfig();
+            foreach (var item in legacy.Channels)
+            {
+                if (string.IsNullOrWhiteSpace(item.Id))
+                {
+                    continue;
+                }
+
+                result.Channels[item.Id.Trim()] = new ChannelSettings
+                {
+                    Enabled = item.Enabled,
+                    Parameters = new Dictionary<string, string>(item.Config ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase)
+                };
+            }
+
+            return result;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static ChannelConfig CreateDefault() => new()
     {
@@ -72,4 +122,17 @@ public sealed class JsonChannelSettingsStore : IChannelSettingsStore
             }
         }
     };
+
+    private sealed class LegacyChannelConfig
+    {
+        public List<LegacyChannelItem> Channels { get; set; } = [];
+    }
+
+    private sealed class LegacyChannelItem
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public bool Enabled { get; set; }
+        public Dictionary<string, string> Config { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
 }
