@@ -41,6 +41,18 @@ internal sealed class ChannelManager(
         }
     }
 
+    private static string? ExtractTargetDisplayName(object? metadata)
+    {
+        if (metadata is null)
+        {
+            return null;
+        }
+
+        var property = metadata.GetType().GetProperty("TargetDisplayName");
+        var value = property?.GetValue(metadata)?.ToString();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
     private async Task ProcessMessageAsync(OutboundMessage message, CancellationToken stoppingToken)
     {
         try
@@ -67,6 +79,7 @@ internal sealed class ChannelManager(
                 MessageDirection.Outbound,
                 DeliveryStatus.Delivered,
                 message.ChatId,
+                ExtractTargetDisplayName(message.Metadata),
                 message.Content,
                 "ChannelManager",
                 "發送成功");
@@ -89,6 +102,7 @@ internal sealed class ChannelManager(
                 MessageDirection.Outbound,
                 DeliveryStatus.Failed,
                 message.ChatId,
+                ExtractTargetDisplayName(message.Metadata),
                 message.Content,
                 "ChannelManager",
                 $"重試後仍失敗：{ex.Message}");

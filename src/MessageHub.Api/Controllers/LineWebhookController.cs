@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using MessageHub.Core;
 using Microsoft.AspNetCore.Mvc;
@@ -7,8 +8,13 @@ namespace MessageHub.Api.Controllers;
 
 [ApiController]
 [Route("api/line")]
-public sealed class LineWebhookController(UnifiedMessageProcessor processor, ILogger<LineWebhookController> logger) : ControllerBase
+public sealed class LineWebhookController(
+    UnifiedMessageProcessor processor,
+    IChannelSettingsService channelSettingsService,
+    ILogger<LineWebhookController> logger) : ControllerBase
 {
+    private static readonly HttpClient HttpClient = new();
+
     [HttpPost("webhook")]
     public async Task<IActionResult> Handle([FromBody] JsonElement data, CancellationToken cancellationToken)
     {
@@ -40,7 +46,8 @@ public sealed class LineWebhookController(UnifiedMessageProcessor processor, ILo
 
         try
         {
-            var request = new WebhookTextMessageRequest(userId, userId, text);
+            var displayName = await GetUserProfileNameAsync(userId, cancellationToken);
+            var request = new WebhookTextMessageRequest(userId, displayName, text);
             await processor.HandleInboundAsync("line-default", "line", request, cancellationToken);
         }
         catch (Exception ex)
@@ -49,5 +56,46 @@ public sealed class LineWebhookController(UnifiedMessageProcessor processor, ILo
         }
 
         return Ok();
+    }
+
+    private async Task<string> GetUserProfileNameAsync(string userId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var config = await channelSettingsService.GetAsync(cancellationToken);
+            var settings = ChannelSettingsResolver.FindSettings(config, "line");
+            var token = settings?.Parameters.GetValueOrDefault("ChannelAccessToken")?.Trim();
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return userId;
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.line.me/v2/bot/profile/{Uri.EscapeDataString(userId)}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var response = await HttpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return userId;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var profile = await JsonSerializer.DeserializeAsync<JsonElement>(stream, cancellationToken: cancellationToken);
+            if (profile.TryGetProperty("displayName", out var displayNameElement))
+            {
+                var displayName = displayNameElement.GetString();
+                if (!string.IsNullOrWhiteSpace(displayName))
+                {
+                    return displayName.Trim();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Line profile lookup 失敗，改用 userId 顯示：{UserId}", userId);
+        }
+
+        return userId;
     }
 }

@@ -8,6 +8,7 @@ public sealed record MessageLogEntry(
     MessageDirection Direction,
     DeliveryStatus Status,
     string TargetId,
+    string? TargetDisplayName,
     string Content,
     string Source,
     string? Details = null);

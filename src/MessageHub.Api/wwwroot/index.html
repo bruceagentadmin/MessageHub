@@ -16,7 +16,7 @@
     .wrap { max-width:1200px; margin:0 auto; padding:24px; }
     .hero { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px; }
     .hero-actions { display:flex; gap:10px; flex-wrap:wrap; }
-    .grid { display:grid; grid-template-columns:1.05fr 1fr; gap:20px; }
+    .grid { display:grid; grid-template-columns:minmax(320px, 0.9fr) minmax(520px, 1.35fr); gap:20px; align-items:start; }
     .card { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow:0 8px 30px rgba(0,0,0,.25); }
     h1,h2,h3 { margin:0 0 12px; }
     .muted { color:var(--muted); font-size:14px; line-height:1.6; }
@@ -25,6 +25,10 @@
     .settings-card { width:100%; background:var(--panel-soft); border:1px solid var(--line-soft); border-radius:14px; padding:14px; }
     .settings-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; }
     .meta { display:flex; gap:8px; flex-wrap:wrap; }
+     .summary-card { display:flex; flex-direction:column; gap:12px; }
+    .channel-summary-row { display:flex; flex-wrap:wrap; gap:10px; }
+    .channel-pill { display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:10px 14px; border-radius:999px; border:1px solid var(--line-soft); background:var(--panel-soft); font-size:13px; }
+    .channel-pill.disabled { opacity:.7; }
     .badge { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:5px 10px; font-size:12px; border:1px solid var(--line-soft); background:#172041; }
     .badge.enabled { color:var(--success); }
     .badge.disabled { color:var(--danger); }
@@ -41,6 +45,11 @@
     button.mini { width:auto; min-height:auto; padding:8px 10px; font-size:12px; }
     table { width:100%; border-collapse:collapse; font-size:14px; }
     th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th.direction-col, td.direction-col { width:72px; text-align:center; }
+    th.status-col, td.status-col { width:92px; white-space:nowrap; }
+    th.channel-col, td.channel-col { width:100px; }
+    .emoji-direction { font-size:18px; line-height:1; }
+    .content-cell { min-width:220px; }
     .toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
     .status { min-height:20px; }
     .ok { color:var(--success); }
@@ -83,6 +92,14 @@
 
     <div class="grid">
       <section class="card">
+        <div class="summary-card">
+          <div>
+            <h2>頻道設定摘要</h2>
+            <div class="small">上方只顯示目前有哪些頻道；要調整細節請按右上角「管理頻道設定」。</div>
+          </div>
+          <div id="settingsSummary" class="channel-summary-row"></div>
+        </div>
+        <div class="divider"></div>
         <h2>手動發送訊息</h2>
         <form id="sendForm">
           <input name="tenantId" value="demo-tenant" placeholder="tenantId" />
@@ -102,35 +119,21 @@
       <section class="card">
         <div class="toolbar">
           <div>
-            <h2>頻道設定摘要</h2>
-            <div class="small">按一下「管理頻道設定」可開啟表單視窗，不必手改 JSON。</div>
+            <h2>訊息 Log</h2>
+            <div class="small">最新 50 筆，30 秒自動刷新；可點一筆訊息直接帶入回覆對象</div>
           </div>
+          <button onclick="loadLogs()" style="width:auto; padding:10px 14px;">手動刷新</button>
         </div>
-        <div id="settingsSummary" class="settings-list"></div>
-        <div class="divider"></div>
-        <h2>Webhook 測試範例</h2>
-        <pre class="small">LINE: POST /api/line/webhook
-Telegram: POST /api/telegram/webhook</pre>
+        <table>
+          <thead>
+            <tr>
+              <th>時間</th><th class="channel-col">頻道</th><th class="direction-col">方向</th><th class="status-col">狀態</th><th>目標</th><th class="content-cell">內容</th><th>來源</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="logsBody"></tbody>
+        </table>
       </section>
     </div>
-
-    <section class="card" style="margin-top:20px;">
-      <div class="toolbar">
-        <div>
-          <h2>訊息 Log</h2>
-          <div class="small">最新 50 筆，30 秒自動刷新；可點一筆訊息直接帶入回覆對象</div>
-        </div>
-        <button onclick="loadLogs()" style="width:auto; padding:10px 14px;">手動刷新</button>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>時間</th><th>租戶</th><th>頻道</th><th>方向</th><th>狀態</th><th>目標</th><th>內容</th><th>來源</th><th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="logsBody"></tbody>
-      </table>
-    </section>
   </div>
 
   <div class="modal-backdrop" id="settingsModal">
@@ -244,26 +247,13 @@ Telegram: POST /api/telegram/webhook</pre>
         return;
       }
 
-      root.innerHTML = settingsDocument.channels.map(channel => {
-        const configItems = Object.entries(channel.config || {})
-          .map(([key, value]) => `<div class="badge">${escapeHtml(key)}: ${escapeHtml(maskValue(key, value))}</div>`)
-          .join('');
-
-        return `
-          <article class="settings-card">
-            <div class="settings-card-head">
-              <div>
-                <h3>${escapeHtml(channel.id)}</h3>
-                <div class="meta">
-                  <span class="badge">${escapeHtml(channel.type)}</span>
-                  <span class="badge ${channel.enabled ? 'enabled' : 'disabled'}">${channel.enabled ? '已啟用' : '未啟用'}</span>
-                </div>
-              </div>
-              <button type="button" class="ghost mini" onclick="openSettingsModal()">編輯</button>
-            </div>
-            <div class="settings-config">${configItems || '<div class="small">尚未填任何設定值</div>'}</div>
-          </article>`;
-      }).join('');
+      root.innerHTML = settingsDocument.channels.map(channel => `
+        <div class="channel-pill ${channel.enabled ? '' : 'disabled'}" title="${escapeHtml(channel.id)} / ${escapeHtml(channel.type)} / ${channel.enabled ? '已啟用' : '未啟用'}">
+          <span>${escapeHtml(channel.id)}</span>
+          <span class="badge">${escapeHtml(channel.type)}</span>
+          <span class="badge ${channel.enabled ? 'enabled' : 'disabled'}">${channel.enabled ? '開' : '關'}</span>
+        </div>
+      `).join('');
     }
 
     function createChannelForm(channel = { id: '', type: 'Telegram', enabled: true, config: {} }) {
@@ -391,7 +381,8 @@ Telegram: POST /api/telegram/webhook</pre>
         channelSelect.value = '';
       }
       form.elements['targetId'].value = target.targetId || '';
-      document.getElementById('selectedTargetHint').textContent = `目前選取回覆對象：${target.channel} / ${target.targetId} / tenant=${target.tenantId}`;
+      const targetLabel = target.targetLabel || target.targetId;
+      document.getElementById('selectedTargetHint').textContent = `目前選取回覆對象：${target.channel} / ${targetLabel} / tenant=${target.tenantId}`;
       document.querySelectorAll('#logsBody tr').forEach(row => row.classList.toggle('selected-row', row.dataset.logId === target.id));
     }
 
@@ -403,22 +394,43 @@ Telegram: POST /api/telegram/webhook</pre>
       document.querySelectorAll('#logsBody tr').forEach(row => row.classList.remove('selected-row'));
     }
 
+    function getDirectionEmoji(direction) {
+      const text = String(direction ?? '').toLowerCase();
+      if (text.includes('inbound') || text.includes('in')) return '📥';
+      if (text.includes('outbound') || text.includes('out')) return '📤';
+      return '•';
+    }
+
+    function getStatusClass(status) {
+      const text = String(status ?? '').toLowerCase();
+      return text.includes('failed') || text === '2' ? 'error' : 'ok';
+    }
+
+    function getTargetLabel(log) {
+      const channel = String(log.channel || log.Channel || '').toLowerCase();
+      const displayName = log.targetDisplayName || log.TargetDisplayName;
+      if ((channel === 'telegram' || channel === 'line') && displayName) {
+        return displayName;
+      }
+      return log.targetId;
+    }
+
     async function loadLogs() {
       const res = await fetch('/api/control/logs?count=50');
       const data = await res.json();
       const body = document.getElementById('logsBody');
       body.innerHTML = data.map(x => {
-        const replyData = encodeURIComponent(JSON.stringify({ id: x.id, tenantId: x.tenantId, channel: x.channel, targetId: x.targetId }));
+        const targetLabel = getTargetLabel(x);
+        const replyData = encodeURIComponent(JSON.stringify({ id: x.id, tenantId: x.tenantId, channel: x.channel, targetId: x.targetId, targetLabel }));
         return `
           <tr class="clickable-row ${selectedTarget && selectedTarget.id === x.id ? 'selected-row' : ''}" data-log-id="${escapeHtml(x.id)}">
             <td>${new Date(x.timestamp).toLocaleString()}</td>
-            <td>${escapeHtml(x.tenantId)}</td>
-            <td>${escapeHtml(x.channel)}</td>
-            <td>${escapeHtml(x.direction)}</td>
-            <td class="${x.status === 2 ? 'error' : 'ok'}">${escapeHtml(x.status)}</td>
-            <td>${escapeHtml(x.targetId)}</td>
-            <td>${escapeHtml(x.content)}</td>
-            <td>${escapeHtml(x.source)}<div class="small">${escapeHtml(x.details ?? '')}</div></td>
+            <td class="channel-col">${escapeHtml(x.channel)}</td>
+            <td class="direction-col" title="${escapeHtml(x.direction)}"><span class="emoji-direction">${getDirectionEmoji(x.direction)}</span></td>
+            <td class="status-col ${getStatusClass(x.status)}">${escapeHtml(x.status)}</td>
+            <td><div>${escapeHtml(targetLabel)}</div></td>
+            <td class="content-cell">${escapeHtml(x.content)}</td>
+            <td>${escapeHtml(x.source)}<div class="small">tenant=${escapeHtml(x.tenantId)}${x.details ? ` / ${escapeHtml(x.details)}` : ''}</div></td>
             <td><button type="button" class="secondary mini reply-btn" data-reply="${replyData}">回覆這筆</button></td>
           </tr>`;
       }).join('');

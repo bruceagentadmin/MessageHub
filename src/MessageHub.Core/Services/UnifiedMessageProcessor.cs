@@ -32,6 +32,7 @@ public sealed class UnifiedMessageProcessor(
             MessageDirection.Inbound,
             DeliveryStatus.Delivered,
             inbound.ChatId,
+            inbound.SenderId,
             inbound.Content,
             $"{inbound.Channel} webhook",
             $"Sender={inbound.SenderId}");
@@ -44,7 +45,8 @@ public sealed class UnifiedMessageProcessor(
             inbound.TenantId,
             inbound.Channel,
             inbound.ChatId,
-            replyText);
+            replyText,
+            new { CreatedAt = DateTimeOffset.UtcNow, TriggeredBy = "AutoReply", TargetDisplayName = inbound.SenderId });
 
         await messageBus.PublishOutboundAsync(reply, cancellationToken);
 
@@ -55,10 +57,12 @@ public sealed class UnifiedMessageProcessor(
     {
         var client = channelFactory.GetChannel(request.Channel);
         var targetId = request.TargetId;
+        RecentTargetInfo? recent = null;
+
+        recent = await recentTargetStore.GetLastTargetAsync(request.Channel, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(targetId))
         {
-            var recent = await recentTargetStore.GetLastTargetAsync(request.Channel, cancellationToken);
             targetId = recent?.TargetId;
         }
 
@@ -72,6 +76,7 @@ public sealed class UnifiedMessageProcessor(
                 MessageDirection.Outbound,
                 DeliveryStatus.Failed,
                 "unknown",
+                null,
                 request.Content,
                 "control center",
                 "找不到可用的 targetId，且該頻道沒有最近互動對象");
@@ -79,12 +84,16 @@ public sealed class UnifiedMessageProcessor(
             return failedLog;
         }
 
+        var targetDisplayName = recent?.TargetId.Equals(targetId, StringComparison.OrdinalIgnoreCase) == true
+            ? recent.DisplayName
+            : null;
+
         var outbound = new OutboundMessage(
             request.TenantId,
             request.Channel,
             targetId,
             request.Content,
-            new { CreatedAt = DateTimeOffset.UtcNow, TriggeredBy = request.TriggeredBy ?? "ControlCenter" });
+            new { CreatedAt = DateTimeOffset.UtcNow, TriggeredBy = request.TriggeredBy ?? "ControlCenter", TargetDisplayName = targetDisplayName });
 
         await messageBus.PublishOutboundAsync(outbound, cancellationToken);
 
@@ -96,6 +105,7 @@ public sealed class UnifiedMessageProcessor(
             MessageDirection.Outbound,
             DeliveryStatus.Pending,
             targetId,
+            targetDisplayName,
             request.Content,
             "control center",
             $"Queued by {request.TriggeredBy ?? "ControlCenter"}");

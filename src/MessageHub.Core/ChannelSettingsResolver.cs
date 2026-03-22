@@ -1,6 +1,6 @@
 namespace MessageHub.Core;
 
-internal static class ChannelSettingsResolver
+public static class ChannelSettingsResolver
 {
     public static ChannelSettings? FindSettings(ChannelConfig config, string channelName)
     {

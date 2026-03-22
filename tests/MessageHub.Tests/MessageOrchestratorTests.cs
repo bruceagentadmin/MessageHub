@@ -23,6 +23,7 @@ public class MessageOrchestratorTests
 
         Assert.Equal(DeliveryStatus.Pending, result.Status);
         Assert.Equal("chat-123", result.TargetId);
+        Assert.Equal("Bruce", result.TargetDisplayName);
         Assert.Null(channel.LastSentMessage);
         Assert.Single(messageBus.OutboundMessages);
         Assert.Equal("hello", messageBus.OutboundMessages[0].Content);
@@ -48,6 +49,7 @@ public class MessageOrchestratorTests
 
         Assert.Equal(DeliveryStatus.Failed, result.Status);
         Assert.Equal("unknown", result.TargetId);
+        Assert.Null(result.TargetDisplayName);
         Assert.Contains("找不到可用的 targetId", result.Details);
         Assert.Null(channel.LastSentMessage);
         Assert.Empty(messageBus.OutboundMessages);
@@ -71,6 +73,7 @@ public class MessageOrchestratorTests
         Assert.Equal("chat-777", messageBus.OutboundMessages[0].ChatId);
         Assert.Contains("已收到：hi", messageBus.OutboundMessages[0].Content);
         Assert.Single(logs);
+        Assert.Equal("user-1", result.TargetDisplayName);
         Assert.Equal("chat-777", recentTargets.Stored?.TargetId);
     }
 }
