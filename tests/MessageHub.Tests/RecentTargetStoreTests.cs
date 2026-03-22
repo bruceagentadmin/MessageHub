@@ -1,4 +1,5 @@
 using MessageHub.Core;
+using MessageHub.Core.Stores;
 
 namespace MessageHub.Tests;
 

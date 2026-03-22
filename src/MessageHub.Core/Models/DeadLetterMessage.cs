@@ -1,4 +1,4 @@
-namespace MessageHub.Core;
+namespace MessageHub.Core.Models;
 
 /// <summary>
 /// 死信訊息 — 封裝發送失敗的 OutboundMessage 及其失敗資訊。

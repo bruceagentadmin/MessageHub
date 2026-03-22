@@ -1,3 +1,5 @@
+using MessageHub.Core.Models;
+
 namespace MessageHub.Core;
 
 /// <summary>

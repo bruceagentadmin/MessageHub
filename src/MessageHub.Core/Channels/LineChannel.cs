@@ -1,7 +1,8 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using MessageHub.Core.Models;
 
-namespace MessageHub.Core;
+namespace MessageHub.Core.Channels;
 
 /// <summary>
 /// Line 頻道實作 — 直接實作 IChannel。

@@ -1,4 +1,6 @@
 using MessageHub.Core;
+using MessageHub.Core.Models;
+using MessageHub.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MessageHub.Api.Controllers;

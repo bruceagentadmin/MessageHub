@@ -1,4 +1,4 @@
-namespace MessageHub.Core;
+namespace MessageHub.Core.Models;
 
 /// <summary>
 /// 頻道總體配置 — 映射租戶的 JSON 頻道設定。

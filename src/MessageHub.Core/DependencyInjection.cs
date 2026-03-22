@@ -1,3 +1,7 @@
+using MessageHub.Core.Bus;
+using MessageHub.Core.Channels;
+using MessageHub.Core.Services;
+using MessageHub.Core.Stores;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace MessageHub.Core;

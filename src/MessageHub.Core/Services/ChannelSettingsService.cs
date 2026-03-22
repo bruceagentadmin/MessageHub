@@ -1,6 +1,7 @@
 using MessageHub.Core;
+using MessageHub.Core.Models;
 
-namespace MessageHub.Core;
+namespace MessageHub.Core.Services;
 
 public sealed class ChannelSettingsService(IChannelSettingsStore store) : IChannelSettingsService
 {

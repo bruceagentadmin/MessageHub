@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
+using MessageHub.Core.Models;
 
-namespace MessageHub.Core;
+namespace MessageHub.Core.Stores;
 
 public sealed class RecentTargetStore : IRecentTargetStore
 {

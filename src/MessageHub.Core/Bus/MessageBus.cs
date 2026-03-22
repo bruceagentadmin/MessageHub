@@ -1,6 +1,7 @@
 using System.Threading.Channels;
+using MessageHub.Core.Models;
 
-namespace MessageHub.Core;
+namespace MessageHub.Core.Bus;
 
 /// <summary>
 /// 訊息匯流排實作 — 使用 System.Threading.Channels 提供高性能的生產者/消費者模型。

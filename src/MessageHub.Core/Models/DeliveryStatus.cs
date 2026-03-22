@@ -1,4 +1,4 @@
-namespace MessageHub.Core;
+namespace MessageHub.Core.Models;
 
 public enum DeliveryStatus
 {

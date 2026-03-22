@@ -1,3 +1,3 @@
-namespace MessageHub.Core;
+namespace MessageHub.Core.Models;
 
 public sealed record WebhookVerifyRequest(string ChannelId);

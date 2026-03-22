@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
+using MessageHub.Core.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace MessageHub.Core;
+namespace MessageHub.Core.Bus;
 
 /// <summary>
 /// 渠道管理員 — 作為後台服務，負責監聽 Bus 上的訊息，並根據訊息指示分發到對應的實體渠道。

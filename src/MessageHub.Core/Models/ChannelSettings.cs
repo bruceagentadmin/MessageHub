@@ -1,4 +1,4 @@
-namespace MessageHub.Core;
+namespace MessageHub.Core.Models;
 
 /// <summary>
 /// 頻道個別設定 — 存放單一頻道的開關與參數。

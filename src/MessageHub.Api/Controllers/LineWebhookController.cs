@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using MessageHub.Core;
+using MessageHub.Core.Models;
+using MessageHub.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 

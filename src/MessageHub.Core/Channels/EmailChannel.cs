@@ -1,4 +1,6 @@
-namespace MessageHub.Core;
+using MessageHub.Core.Models;
+
+namespace MessageHub.Core.Channels;
 
 /// <summary>
 /// Email 頻道實作 — 直接實作 IChannel。

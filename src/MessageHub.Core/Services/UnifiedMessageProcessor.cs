@@ -1,4 +1,6 @@
-namespace MessageHub.Core;
+using MessageHub.Core.Models;
+
+namespace MessageHub.Core.Services;
 
 /// <summary>
 /// 統一訊息處理核心 — 實現 IMessageProcessor，整合訊息處理邏輯。

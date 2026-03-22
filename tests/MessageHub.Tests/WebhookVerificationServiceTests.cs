@@ -1,4 +1,7 @@
 using MessageHub.Core;
+using MessageHub.Core.Channels;
+using MessageHub.Core.Models;
+using MessageHub.Core.Services;
 
 namespace MessageHub.Tests;
 
