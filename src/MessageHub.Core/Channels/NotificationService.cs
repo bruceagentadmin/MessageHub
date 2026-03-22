@@ -4,7 +4,7 @@ namespace MessageHub.Core;
 /// 主動通知服務實作 — 結合 ChannelFactory 與 IChannelSettingsService。
 /// 對應規格文件中的 NotificationService。
 /// </summary>
-public sealed class NotificationService(
+internal sealed class NotificationService(
     ChannelFactory channelFactory,
     IChannelSettingsService channelSettingsService,
     IMessageBus messageBus) : INotificationService

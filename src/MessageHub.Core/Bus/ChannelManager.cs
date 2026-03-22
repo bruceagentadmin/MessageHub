@@ -1,34 +1,22 @@
 using System.Collections.Concurrent;
-using MessageHub.Core;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Polly;
-using Polly.Retry;
 
-namespace MessageHub.Infrastructure;
+namespace MessageHub.Core;
 
 /// <summary>
 /// 渠道管理員 — 作為後台服務，負責監聽 Bus 上的訊息，並根據訊息指示分發到對應的實體渠道。
-/// 包含 Polly 重試 (3 次指數退避)、Dead Letter Queue、Per-Channel 速率限制。
+/// 包含重試 (透過 IRetryPipeline)、Dead Letter Queue、Per-Channel 速率限制。
 /// 對應 MESSAGE_BUS_ARCHITECTURE 規格文件中的 ChannelManager。
 /// </summary>
-public sealed class ChannelManager(
+internal sealed class ChannelManager(
     IMessageBus messageBus,
     ChannelFactory channelFactory,
     IChannelSettingsService channelSettingsService,
     IMessageLogStore logStore,
+    IRetryPipeline retryPipeline,
     ILogger<ChannelManager> logger) : BackgroundService
 {
-    private static readonly ResiliencePipeline RetryPipeline = new ResiliencePipelineBuilder()
-        .AddRetry(new RetryStrategyOptions
-        {
-            MaxRetryAttempts = 3,
-            Delay = TimeSpan.FromSeconds(1),
-            BackoffType = DelayBackoffType.Exponential,
-            ShouldHandle = new PredicateBuilder().Handle<Exception>()
-        })
-        .Build();
-
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _rateLimiters = new(StringComparer.OrdinalIgnoreCase);
 
     private SemaphoreSlim GetRateLimiter(string channel)
@@ -66,7 +54,7 @@ public sealed class ChannelManager(
                 throw new InvalidOperationException($"頻道 {message.Channel} 未啟用或不存在");
             }
 
-            await RetryPipeline.ExecuteAsync(async ct =>
+            await retryPipeline.ExecuteAsync(async ct =>
             {
                 await channel.SendAsync(message.ChatId, message, settings, ct);
             }, stoppingToken);
@@ -88,7 +76,7 @@ public sealed class ChannelManager(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "發送訊息至 {Channel} 失敗（已重試 3 次），移至 Dead Letter Queue", message.Channel);
+            logger.LogError(ex, "發送訊息至 {Channel} 失敗（已重試），移至 Dead Letter Queue", message.Channel);
 
             var deadLetter = new DeadLetterMessage(message, ex.Message, 3, DateTimeOffset.UtcNow);
             await messageBus.PublishDeadLetterAsync(deadLetter, stoppingToken);
@@ -103,7 +91,7 @@ public sealed class ChannelManager(
                 message.ChatId,
                 message.Content,
                 "ChannelManager",
-                $"重試 3 次後仍失敗：{ex.Message}");
+                $"重試後仍失敗：{ex.Message}");
 
             await logStore.AddAsync(failedLog, stoppingToken);
         }

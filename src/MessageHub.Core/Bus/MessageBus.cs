@@ -7,7 +7,7 @@ namespace MessageHub.Core;
 /// 對應 MESSAGE_BUS_ARCHITECTURE 規格文件中的 MessageBus。
 /// 提供 Outbound、Inbound、Dead Letter Queue 三條佇列。
 /// </summary>
-public sealed class MessageBus : IMessageBus
+internal sealed class MessageBus : IMessageBus
 {
     private readonly Channel<OutboundMessage> _outbound = Channel.CreateUnbounded<OutboundMessage>(
         new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });

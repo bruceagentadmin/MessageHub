@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace MessageHub.Core;
 
-public sealed class InMemoryMessageLogStore : IMessageLogStore
+internal sealed class InMemoryMessageLogStore : IMessageLogStore
 {
     private readonly ConcurrentQueue<MessageLogEntry> _entries = new();
 

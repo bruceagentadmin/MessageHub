@@ -5,14 +5,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddSwaggerGen();
+builder.Services.AddMessageHubCore();
 builder.Services.AddMessageHubInfrastructure();
-
-// Application services (在 Api 層註冊，因 Application 層依賴 Core 而非 Infrastructure)
-builder.Services.AddSingleton<ChannelSettingsService>();
-builder.Services.AddSingleton<IChannelSettingsService>(sp => sp.GetRequiredService<ChannelSettingsService>());
-builder.Services.AddSingleton<ICommonParameterProvider>(sp => sp.GetRequiredService<ChannelSettingsService>());
-builder.Services.AddSingleton<UnifiedMessageProcessor>();
-builder.Services.AddSingleton<IMessageProcessor>(sp => sp.GetRequiredService<UnifiedMessageProcessor>());
 
 var app = builder.Build();
 

@@ -4,7 +4,7 @@ namespace MessageHub.Core;
 /// Email 頻道實作 — 直接實作 IChannel。
 /// Email 模擬通道，先以文字送達紀錄驗證流程。
 /// </summary>
-public sealed class EmailChannel(IChannelSettingsService channelSettingsService) : IChannel
+internal sealed class EmailChannel(IChannelSettingsService channelSettingsService) : IChannel
 {
     private readonly IChannelSettingsService _channelSettingsService = channelSettingsService;
 

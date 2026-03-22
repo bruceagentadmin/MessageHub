@@ -21,12 +21,12 @@ MessageHub/
 │   │   ├── Services/              # 業務服務 (ChannelSettingsService, UnifiedMessageProcessor)
 │   │   ├── Stores/                # 儲存實作 (InMemoryMessageLogStore, JsonChannelSettingsStore, RecentTargetStore)
 │   │   ├── Channels/              # 頻道實作 (LineChannel, TelegramChannel, EmailChannel, NotificationService, WebhookVerificationService)
-│   │   ├── Bus/                   # 訊息匯流排 (MessageBus)
-│   │   ├── I*.cs                  # 核心介面 (IChannel, IMessageBus, IMessageProcessor 等)
+│   │   ├── Bus/                   # 訊息匯流排 (MessageBus) + 背景分發引擎 (ChannelManager)
+│   │   ├── I*.cs                  # 核心介面 (IChannel, IMessageBus, IRetryPipeline, IMessageProcessor 等)
 │   │   ├── ChannelFactory.cs      # 頻道工廠
 │   │   └── ChannelSettingsResolver.cs
-│   ├── MessageHub.Infrastructure/ # 基礎設施層 — 僅保留依賴 Polly 的功能
-│   │   ├── ChannelManager.cs      # 背景服務：監聽 Bus、Polly 重試、DLQ、速率限制
+│   ├── MessageHub.Infrastructure/ # 基礎設施層 — 僅提供 Polly 重試管線實作
+│   │   ├── PollyRetryPipeline.cs  # IRetryPipeline 實作：Polly 3 次指數退避重試
 │   │   └── DependencyInjection.cs # DI 註冊擴充方法
 │   └── MessageHub.Api/            # API 層 — ASP.NET Core Web API
 │       ├── Controllers/           # Webhook + 控制中心 API

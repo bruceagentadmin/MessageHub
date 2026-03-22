@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace MessageHub.Core;
 
-public sealed class JsonChannelSettingsStore : IChannelSettingsStore
+internal sealed class JsonChannelSettingsStore : IChannelSettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
