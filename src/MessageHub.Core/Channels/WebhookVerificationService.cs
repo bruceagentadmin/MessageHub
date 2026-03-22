@@ -1,7 +1,6 @@
 using System.Net.Http.Json;
-using MessageHub.Core;
 
-namespace MessageHub.Infrastructure;
+namespace MessageHub.Core;
 
 public sealed class WebhookVerificationService(IChannelSettingsService channelSettingsService) : IWebhookVerificationService
 {

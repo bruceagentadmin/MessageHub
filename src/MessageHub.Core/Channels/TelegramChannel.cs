@@ -1,7 +1,6 @@
 using System.Net.Http.Json;
-using MessageHub.Core;
 
-namespace MessageHub.Infrastructure;
+namespace MessageHub.Core;
 
 /// <summary>
 /// Telegram 頻道實作 — 直接實作 IChannel。

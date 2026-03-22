@@ -1,4 +1,3 @@
-using MessageHub.Application;
 using MessageHub.Core;
 using MessageHub.Infrastructure;
 

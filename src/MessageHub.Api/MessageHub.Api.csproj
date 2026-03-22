@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MessageHub.Core\MessageHub.Core.csproj" />
-    <ProjectReference Include="..\MessageHub.Application\MessageHub.Application.csproj" />
     <ProjectReference Include="..\MessageHub.Infrastructure\MessageHub.Infrastructure.csproj" />
   </ItemGroup>
 

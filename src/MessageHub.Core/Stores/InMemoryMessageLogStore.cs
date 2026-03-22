@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
-using MessageHub.Core;
 
-namespace MessageHub.Infrastructure;
+namespace MessageHub.Core;
 
 public sealed class InMemoryMessageLogStore : IMessageLogStore
 {

@@ -1,5 +1,4 @@
 using MessageHub.Api.Controllers;
-using MessageHub.Application;
 using MessageHub.Core;
 using Microsoft.AspNetCore.Mvc;
 

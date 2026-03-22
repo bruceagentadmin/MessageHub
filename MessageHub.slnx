@@ -1,7 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/MessageHub.Api/MessageHub.Api.csproj" />
-    <Project Path="src/MessageHub.Application/MessageHub.Application.csproj" />
     <Project Path="src/MessageHub.Core/MessageHub.Core.csproj" />
     <Project Path="src/MessageHub.Infrastructure/MessageHub.Infrastructure.csproj" />
   </Folder>

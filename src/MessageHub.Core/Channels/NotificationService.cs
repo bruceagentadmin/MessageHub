@@ -1,6 +1,4 @@
-using MessageHub.Core;
-
-namespace MessageHub.Infrastructure;
+namespace MessageHub.Core;
 
 /// <summary>
 /// 主動通知服務實作 — 結合 ChannelFactory 與 IChannelSettingsService。

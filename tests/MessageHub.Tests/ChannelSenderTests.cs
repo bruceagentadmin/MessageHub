@@ -1,8 +1,6 @@
 using System.Net;
 using System.Text;
-using MessageHub.Application;
 using MessageHub.Core;
-using MessageHub.Infrastructure;
 
 namespace MessageHub.Tests;
 

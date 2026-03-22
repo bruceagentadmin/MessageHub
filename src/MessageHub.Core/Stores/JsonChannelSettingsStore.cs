@@ -1,7 +1,6 @@
 using System.Text.Json;
-using MessageHub.Core;
 
-namespace MessageHub.Infrastructure;
+namespace MessageHub.Core;
 
 public sealed class JsonChannelSettingsStore : IChannelSettingsStore
 {

@@ -1,5 +1,4 @@
 using System.Text.Json;
-using MessageHub.Application;
 using MessageHub.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;

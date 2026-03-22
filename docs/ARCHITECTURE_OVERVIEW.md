@@ -6,9 +6,8 @@
 
 本專案採用典型的乾淨架構 (Clean Architecture) 原則：
 
-- **MessageHub.Core**: 核心領域層。定義所有的介面 (Interfaces) 與模型 (Models)，不依賴於其他專案。
-- **MessageHub.Application**: 應用程式邏輯層。實現核心業務流程（如 `UnifiedMessageProcessor`、`ChannelSettingsService`），協調各個服務。
-- **MessageHub.Infrastructure**: 基礎設施層。提供具體的技術實作，包含 MessageBus (System.Threading.Channels)、ChannelManager (Polly 重試 + DLQ + 限流) 與各通訊頻道類別。
+- **MessageHub.Core**: 核心層。定義所有介面 (Interfaces)、模型 (Models)，並包含大部分業務邏輯實作：頻道 (Channels/)、訊息匯流排 (Bus/)、業務服務 (Services/)、儲存 (Stores/)。不依賴任何外部 NuGet 套件。
+- **MessageHub.Infrastructure**: 基礎設施層。僅保留依賴 Polly.Core 的功能 — ChannelManager（背景 Worker：重試 + DLQ + 限流）與 DI 註冊擴充方法。
 - **MessageHub.Api**: 外部接口層。提供 ASP.NET Core Controllers 作為系統 Webhook 與手動發送的進入點。
 
 ---
@@ -443,37 +442,52 @@ sequenceDiagram
 | `DeliveryStatus` | enum | Pending, Delivered, Failed |
 | `MessageDirection` | enum | Inbound, Outbound, System |
 
-### 7.3 應用層實作 (MessageHub.Application)
+### 7.3 業務服務實作 (MessageHub.Core/Services)
 
 | 類別 | 用途 |
 |---|---|
 | `UnifiedMessageProcessor` | 實作 IMessageProcessor。HandleInboundAsync 處理 Webhook → Bus、SendManualAsync 手動發送 → Bus、ProcessAsync 產生回覆 |
 | `ChannelSettingsService` | 實作 IChannelSettingsService。讀取/儲存頻道設定 JSON、正規化 legacy key 名稱 |
 
-### 7.4 基礎設施層實作 (MessageHub.Infrastructure)
+### 7.4 頻道實作 (MessageHub.Core/Channels)
 
 | 類別 | 用途 |
 |---|---|
-| `MessageBus` | 實作 IMessageBus。三條 `System.Threading.Channels` 佇列 + 監控計數 |
-| `ChannelManager` | BackgroundService。消費 Outbound → Polly 重試 → 限流 → DLQ → 日誌 |
-| `ChannelFactory` | 頻道工廠。依名稱對照 IChannel 實例 |
 | `LineChannel` | 實作 IChannel。Line Messaging API (Push) |
 | `TelegramChannel` | 實作 IChannel。Telegram Bot API (sendMessage) |
 | `EmailChannel` | 實作 IChannel。Email 模擬通道 (POC) |
 | `NotificationService` | 實作 INotificationService。取得 NotificationTargetId → PublishOutboundAsync |
 | `WebhookVerificationService` | 實作 IWebhookVerificationService |
+
+### 7.5 訊息匯流排實作 (MessageHub.Core/Bus)
+
+| 類別 | 用途 |
+|---|---|
+| `MessageBus` | 實作 IMessageBus。三條 `System.Threading.Channels` 佇列 + 監控計數 |
+
+### 7.6 儲存實作 (MessageHub.Core/Stores)
+
+| 類別 | 用途 |
+|---|---|
 | `InMemoryMessageLogStore` | 實作 IMessageLogStore (記憶體) |
 | `JsonChannelSettingsStore` | 實作 IChannelSettingsStore (JSON 檔案) |
 | `RecentTargetStore` | 實作 IRecentTargetStore (記憶體) |
 
-### 7.5 API 層 (MessageHub.Api)
+### 7.7 基礎設施層實作 (MessageHub.Infrastructure)
+
+| 類別 | 用途 |
+|---|---|
+| `ChannelManager` | BackgroundService。消費 Outbound → Polly 重試 → 限流 → DLQ → 日誌 |
+| `DependencyInjection` | AddMessageHubInfrastructure 擴充方法，註冊所有 Core + Infrastructure 服務 |
+
+### 7.8 API 層 (MessageHub.Api)
 
 | Controller | 路由 | 用途 |
 |---|---|---|
 | `TelegramWebhookController` | POST /api/telegram/webhook | 解析 Telegram Update → HandleInboundAsync |
 | `LineWebhookController` | POST /api/line/webhook | 解析 Line Events → HandleInboundAsync |
 | `ControlCenterController` | /api/control/* | 手動發送、查看日誌、管理設定 |
-| `WebhooksController` | /api/webhooks/* | Webhook 驗證 |
+| `WebhooksController` | /api/webhooks/* | 通用 Webhook 文字訊息接收端點（適合 Postman 測試） |
 
 ---
 
@@ -516,11 +530,11 @@ public static IServiceCollection AddMessageHubInfrastructure(this IServiceCollec
 |---|---|
 | 核心介面 | `src/MessageHub.Core/` |
 | 資料模型 | `src/MessageHub.Core/Models/` |
-| 應用邏輯 | `src/MessageHub.Application/` |
-| Bus 實作 | `src/MessageHub.Infrastructure/MessageBus.cs` |
-| 頻道實作 | `src/MessageHub.Infrastructure/*Channel.cs` |
+| 業務服務 | `src/MessageHub.Core/Services/` |
+| 頻道實作 | `src/MessageHub.Core/Channels/` |
+| Bus 實作 | `src/MessageHub.Core/Bus/MessageBus.cs` |
+| 儲存實作 | `src/MessageHub.Core/Stores/` |
 | 背景處理 | `src/MessageHub.Infrastructure/ChannelManager.cs` |
-| 通知服務 | `src/MessageHub.Infrastructure/NotificationService.cs` |
-| API 進入點 | `src/MessageHub.Api/Controllers/` |
 | DI 註冊 | `src/MessageHub.Infrastructure/DependencyInjection.cs` |
+| API 進入點 | `src/MessageHub.Api/Controllers/` |
 | 測試 | `tests/MessageHub.Tests/` |

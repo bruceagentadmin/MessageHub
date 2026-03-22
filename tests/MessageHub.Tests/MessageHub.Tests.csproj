@@ -21,7 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MessageHub.Api\MessageHub.Api.csproj" />
     <ProjectReference Include="..\..\src\MessageHub.Core\MessageHub.Core.csproj" />
-    <ProjectReference Include="..\..\src\MessageHub.Application\MessageHub.Application.csproj" />
     <ProjectReference Include="..\..\src\MessageHub.Infrastructure\MessageHub.Infrastructure.csproj" />
   </ItemGroup>
 

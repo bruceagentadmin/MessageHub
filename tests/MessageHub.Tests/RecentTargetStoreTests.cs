@@ -1,4 +1,4 @@
-using MessageHub.Infrastructure;
+using MessageHub.Core;
 
 namespace MessageHub.Tests;
 
