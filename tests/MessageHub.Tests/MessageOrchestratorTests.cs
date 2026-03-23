@@ -14,9 +14,10 @@ public class MessageOrchestratorTests
         var channel = new TestChannel("telegram");
         var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(new RecentTargetInfo("telegram", "chat-123", "Bruce", DateTimeOffset.UtcNow));
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
+        var processor = new EchoMessageProcessor();
+        var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
 
-        var result = await processor.SendManualAsync(new SendMessageRequest(
+        var result = await coordinator.SendManualAsync(new SendMessageRequest(
             "demo-tenant",
             "telegram",
             "",
@@ -40,9 +41,10 @@ public class MessageOrchestratorTests
         var channel = new TestChannel("line");
         var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(null);
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
+        var processor = new EchoMessageProcessor();
+        var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
 
-        var result = await processor.SendManualAsync(new SendMessageRequest(
+        var result = await coordinator.SendManualAsync(new SendMessageRequest(
             "demo-tenant",
             "line",
             "",
@@ -65,9 +67,10 @@ public class MessageOrchestratorTests
         var channel = new TestChannel("telegram");
         var factory = new ChannelFactory([channel]);
         var recentTargets = new TestRecentTargetStore(null);
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
+        var processor = new EchoMessageProcessor();
+        var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
 
-        var result = await processor.HandleInboundAsync("tenant-a", "telegram", new WebhookTextMessageRequest("chat-777", "user-1", "hi"));
+        var result = await coordinator.HandleInboundAsync("tenant-a", "telegram", new WebhookTextMessageRequest("chat-777", "user-1", "hi"));
         var logs = await logStore.GetRecentAsync(10);
 
         Assert.Equal(DeliveryStatus.Delivered, result.Status);

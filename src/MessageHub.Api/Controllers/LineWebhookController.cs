@@ -2,7 +2,6 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using MessageHub.Core;
 using MessageHub.Core.Models;
-using MessageHub.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -11,7 +10,7 @@ namespace MessageHub.Api.Controllers;
 [ApiController]
 [Route("api/line")]
 public sealed class LineWebhookController(
-    UnifiedMessageProcessor processor,
+    IMessageCoordinator coordinator,
     IChannelSettingsService channelSettingsService,
     ILogger<LineWebhookController> logger) : ControllerBase
 {
@@ -50,7 +49,7 @@ public sealed class LineWebhookController(
         {
             var displayName = await GetUserProfileNameAsync(userId, cancellationToken);
             var request = new WebhookTextMessageRequest(userId, displayName, text);
-            await processor.HandleInboundAsync("line-default", "line", request, cancellationToken);
+            await coordinator.HandleInboundAsync("line-default", "line", request, cancellationToken);
         }
         catch (Exception ex)
         {

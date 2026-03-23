@@ -1,6 +1,5 @@
 using MessageHub.Core;
 using MessageHub.Core.Models;
-using MessageHub.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MessageHub.Api.Controllers;
@@ -8,17 +7,17 @@ namespace MessageHub.Api.Controllers;
 [ApiController]
 [Route("api/control")]
 public sealed class ControlCenterController(
-    UnifiedMessageProcessor processor,
+    IMessageCoordinator coordinator,
     IChannelSettingsService channelSettingsService,
     IWebhookVerificationService webhookVerificationService) : ControllerBase
 {
     [HttpGet("channels")]
     public ActionResult<IReadOnlyList<ChannelDefinition>> GetChannels()
-        => Ok(processor.GetChannels());
+        => Ok(coordinator.GetChannels());
 
     [HttpGet("logs")]
     public async Task<ActionResult<IReadOnlyList<MessageLogEntry>>> GetLogs([FromQuery] int count = 50, CancellationToken cancellationToken = default)
-        => Ok(await processor.GetRecentLogsAsync(count, cancellationToken));
+        => Ok(await coordinator.GetRecentLogsAsync(count, cancellationToken));
 
     [HttpPost("send")]
     public async Task<ActionResult<MessageLogEntry>> Send([FromBody] SendMessageRequest request, CancellationToken cancellationToken)
@@ -28,7 +27,7 @@ public sealed class ControlCenterController(
             return BadRequest("tenantId, channel, content 必填；targetId 可留空以使用最近互動對象");
         }
 
-        var result = await processor.SendManualAsync(request, cancellationToken);
+        var result = await coordinator.SendManualAsync(request, cancellationToken);
         return Ok(result);
     }
 

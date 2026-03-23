@@ -15,10 +15,11 @@ public class ControlCenterControllerTests
         var messageBus = new ControllerFakeMessageBus();
         var factory = new ChannelFactory([new FakeChannel("telegram")]);
         var recentTargets = new FakeRecentTargetStore();
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
+        var processor = new EchoMessageProcessor();
+        var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
         var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
         var webhookVerification = new FakeWebhookVerificationServiceForController();
-        var controller = new ControlCenterController(processor, settingsService, webhookVerification);
+        var controller = new ControlCenterController(coordinator, settingsService, webhookVerification);
 
         var result = await controller.Send(new SendMessageRequest("", "", "", "", null), default);
 
@@ -33,10 +34,11 @@ public class ControlCenterControllerTests
         var messageBus = new ControllerFakeMessageBus();
         var factory = new ChannelFactory([new FakeChannel("telegram")]);
         var recentTargets = new FakeRecentTargetStore();
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
+        var processor = new EchoMessageProcessor();
+        var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
         var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
         var webhookVerification = new FakeWebhookVerificationServiceForController();
-        var controller = new ControlCenterController(processor, settingsService, webhookVerification);
+        var controller = new ControlCenterController(coordinator, settingsService, webhookVerification);
 
         var result = await controller.Send(new SendMessageRequest("tenant", "telegram", "chat-1", "hello", "test"), default);
 
@@ -54,10 +56,11 @@ public class ControlCenterControllerTests
         var messageBus = new ControllerFakeMessageBus();
         var factory = new ChannelFactory([new FakeChannel("telegram")]);
         var recentTargets = new FakeRecentTargetStore();
-        var processor = new UnifiedMessageProcessor(logStore, factory, recentTargets, messageBus);
+        var processor = new EchoMessageProcessor();
+        var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
         var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
         var webhookVerification = new FakeWebhookVerificationServiceForController();
-        var controller = new ControlCenterController(processor, settingsService, webhookVerification);
+        var controller = new ControlCenterController(coordinator, settingsService, webhookVerification);
 
         var result = await controller.VerifyWebhook(new WebhookVerifyRequest(""), default);
 
