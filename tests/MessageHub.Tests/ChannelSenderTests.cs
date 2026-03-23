@@ -3,7 +3,7 @@ using System.Text;
 using MessageHub.Core;
 using MessageHub.Core.Channels;
 using MessageHub.Core.Models;
-using MessageHub.Core.Services;
+using MessageHub.Domain.Services;
 
 namespace MessageHub.Tests;
 

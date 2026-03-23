@@ -16,24 +16,30 @@ POC 驗證使用 .NET 8 建立多頻道統一通訊平台的可行性。
 ```
 MessageHub/
 ├── src/
-│   ├── MessageHub.Core/           # 核心層 — 介面、模型、業務邏輯實作
+│   ├── MessageHub.Core/           # 核心層 — 介面、模型、通訊相關實作
 │   │   ├── Models/                # 資料模型 (InboundMessage, OutboundMessage, ChannelConfig 等)
-│   │   ├── Services/              # 業務服務 (ChannelSettingsService, UnifiedMessageProcessor)
-│   │   ├── Stores/                # 儲存實作 (InMemoryMessageLogStore, JsonChannelSettingsStore, RecentTargetStore)
-│   │   ├── Channels/              # 頻道實作 (LineChannel, TelegramChannel, EmailChannel, NotificationService, WebhookVerificationService)
-│   │   ├── Bus/                   # 訊息匯流排 (MessageBus) + 背景分發引擎 (ChannelManager)
+│   │   ├── Stores/Models/         # Store 相關模型 (JSON 反序列化用)
+│   │   ├── Services/              # 業務服務 (MessageCoordinator, EchoMessageProcessor)
+│   │   ├── Channels/              # 頻道實作 (LineChannel, TelegramChannel, EmailChannel)
+│   │   ├── Bus/                   # 訊息匯流排 (MessageBus)
 │   │   ├── I*.cs                  # 核心介面 (IChannel, IMessageBus, IRetryPipeline, IMessageProcessor 等)
 │   │   ├── ChannelFactory.cs      # 頻道工廠
 │   │   └── ChannelSettingsResolver.cs
-│   ├── MessageHub.Infrastructure/ # 基礎設施層 — 僅提供 Polly 重試管線實作
+│   ├── MessageHub.Domain/         # 領域層 — 頻道設定、通知、Webhook 驗證、領域服務
+│   │   ├── Services/              # 領域服務 (ChannelSettingsService, NotificationService, WebhookVerificationService, MessagingService, HistoryService, ContactService)
+│   │   └── Stores/                # 儲存實作 (JsonChannelSettingsStore)
+│   ├── MessageHub.Infrastructure/ # 基礎設施層 — Polly 重試管線、SQLite 儲存實作
 │   │   ├── PollyRetryPipeline.cs  # IRetryPipeline 實作：Polly 3 次指數退避重試
+│   │   └── DependencyInjection.cs # DI 註冊擴充方法
+│   ├── MessageHub.Worker/         # 背景服務層 — ChannelManager 背景分發引擎
+│   │   ├── ChannelManager.cs      # BackgroundService：消費 Outbound 佇列、重試、限流、DLQ
 │   │   └── DependencyInjection.cs # DI 註冊擴充方法
 │   └── MessageHub.Api/            # API 層 — ASP.NET Core Web API
 │       ├── Controllers/           # Webhook + 控制中心 API
 │       ├── wwwroot/               # 靜態前端頁面
 │       └── Program.cs             # 應用程式進入點
 └── tests/
-    └── MessageHub.Tests/          # 單元測試 (xUnit, 15 個測試案例)
+    └── MessageHub.Tests/          # 單元測試 (xUnit, 14 個測試案例)
 ```
 
 ## 快速開始

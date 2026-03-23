@@ -2,7 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/MessageHub.Api/MessageHub.Api.csproj" />
     <Project Path="src/MessageHub.Core/MessageHub.Core.csproj" />
+    <Project Path="src/MessageHub.Domain/MessageHub.Domain.csproj" />
     <Project Path="src/MessageHub.Infrastructure/MessageHub.Infrastructure.csproj" />
+    <Project Path="src/MessageHub.Worker/MessageHub.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MessageHub.Tests/MessageHub.Tests.csproj" />

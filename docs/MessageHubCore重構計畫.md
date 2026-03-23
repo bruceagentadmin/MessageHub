@@ -1,7 +1,7 @@
 # MessageHub.Core 重構計畫
 
 > 目標：提升 DX（Developer Experience），修正 SOLID 違反項，並為所有類別、方法、複雜邏輯補上完整的 XML 文件註解與行內註解。  
-> **本文件為審閱用草案，需審核通過後才會實施。**
+> **本重構已於 2026-03-24 完成實施。** 詳見 `refactor/simplify-core` 分支。
 
 ---
 
@@ -135,8 +135,6 @@ public interface IChannelSettingsService : ICommonParameterProvider
 | `ChannelSettingsResolver.cs` | ❌ 無任何註解 | 類別 `<summary>`、`FindSettings` 方法的多層匹配邏輯補行內註解、`LooksLikeChannelType` 補完整註解 |
 | `DependencyInjection.cs` | ❌ 無任何註解 | 類別 `<summary>`、`AddMessageHubCore` 方法 `<summary>` |
 
----
-
 ## 三、行內註解（Inline Comments）需補強的複雜邏輯
 
 | 檔案 | 方法 | 需註解的邏輯 |
@@ -164,4 +162,21 @@ public interface IChannelSettingsService : ICommonParameterProvider
 - [ ] 既有 API 端點行為不變（功能回歸）
 
 ---
- 
+
+## 五、實施結果
+
+本重構已於 2026-03-24 完成，變更摘要如下：
+
+### 已完成項目
+
+- [x] SRP 違反修正：`UnifiedMessageProcessor` 拆分為 `MessageCoordinator` (IMessageCoordinator) + `EchoMessageProcessor` (IMessageProcessor) — 已在先前的重構中完成
+- [x] 非通訊職責從 Core 搬移至 Domain：ChannelSettingsService、JsonChannelSettingsStore、NotificationService、WebhookVerificationService
+- [x] ChannelManager (BackgroundService) 搬移至新建的 MessageHub.Worker 專案
+- [x] 刪除已被 SQLite 取代的記憶體儲存實作：InMemoryMessageLogStore、RecentTargetStore
+- [x] Core DI 精簡為僅註冊通訊相關服務（Channels、MessageBus、MessageCoordinator、EchoMessageProcessor）
+- [x] 所有 14 個測試通過、零建置錯誤、零警告
+
+### 未實施項目
+
+- ISP 違反（IChannelSettingsService 繼承 ICommonParameterProvider）：決定維持現狀
+- XML 文件註解補齊（第二、三節）：本次重構範圍外，可另行處理

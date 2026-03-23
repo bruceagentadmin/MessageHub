@@ -6,9 +6,11 @@
 
 本專案採用典型的乾淨架構 (Clean Architecture) 原則：
 
-- **MessageHub.Core**: 核心層。定義所有介面 (Interfaces)、模型 (Models)，並包含大部分業務邏輯實作：頻道 (Channels/)、訊息匯流排與背景分發引擎 (Bus/)、業務服務 (Services/)、儲存 (Stores/)。Core 定義 `IRetryPipeline` 介面抽象化重試邏輯，不直接依賴任何重試框架。非必要公開的實作類別皆以 `internal` 封裝，僅透過介面對外暴露。
-- **MessageHub.Infrastructure**: 基礎設施層。僅提供 `IRetryPipeline` 的 Polly 實作（`PollyRetryPipeline`：3 次指數退避）與 DI 註冊擴充方法。
-- **MessageHub.Api**: 外部接口層。提供 ASP.NET Core Controllers 作為系統 Webhook 與手動發送的進入點。
+- **MessageHub.Core**: 核心層。定義所有介面 (Interfaces)、模型 (Models)，並包含通訊相關實作：頻道 (Channels/)、訊息匯流排 (Bus/)、訊息協調與處理 (Services/)。Core 定義 `IRetryPipeline` 介面抽象化重試邏輯，不直接依賴任何重試框架。
+- **MessageHub.Domain**: 領域層。包含頻道設定服務 (ChannelSettingsService)、通知服務 (NotificationService)、Webhook 驗證 (WebhookVerificationService)、JSON 設定儲存 (JsonChannelSettingsStore)，以及領域服務 (MessagingService, HistoryService, ContactService)。參照 Core。
+- **MessageHub.Worker**: 背景服務層。包含 ChannelManager (BackgroundService)，負責消費 Outbound 佇列、重試、限流、Dead Letter Queue 處理。參照 Core。
+- **MessageHub.Infrastructure**: 基礎設施層。提供 `IRetryPipeline` 的 Polly 實作及 SQLite 儲存實作。參照 Core + Domain。
+- **MessageHub.Api**: 外部接口層。ASP.NET Core Controllers。
 
 ---
 
@@ -135,7 +137,7 @@ classDiagram
 
 ### 2.3 訊息匯流排與分發引擎 (Message Bus & Channel Manager)
 
-`IMessageBus` 提供三條佇列（Outbound / Inbound / DLQ），`ChannelManager` 作為背景 Worker 消費 Outbound 並透過 `IRetryPipeline` 整合重試、限流與死信處理。Core 定義 `IRetryPipeline` 介面抽象化重試邏輯，Infrastructure 提供 Polly 實作。
+`IMessageBus` 提供三條佇列（Outbound / Inbound / DLQ），`ChannelManager`（位於 MessageHub.Worker 命名空間）作為背景 Worker 消費 Outbound 並透過 `IRetryPipeline` 整合重試、限流與死信處理。Core 定義 `IRetryPipeline` 介面抽象化重試邏輯，Infrastructure 提供 Polly 實作。
 
 ```mermaid
 classDiagram
@@ -173,7 +175,7 @@ classDiagram
     }
 
     class ChannelManager {
-        <<internal, BackgroundService>>
+        <<Worker, BackgroundService>>
         -IRetryPipeline _retryPipeline
         -ConcurrentDictionary~string, SemaphoreSlim~ _rateLimiters
         #ExecuteAsync(stoppingToken) Task
@@ -200,7 +202,7 @@ classDiagram
 
 ### 2.4 業務入口與訊息推送 (Business Entry Points)
 
-`UnifiedMessageProcessor` 與 `NotificationService` 作為業務邏輯的兩個入口，皆透過 `IMessageBus.PublishOutboundAsync` 推送訊息，實現「發後即忘」的解耦模式。
+`MessageCoordinator` 與 `NotificationService` 作為業務邏輯的兩個入口，皆透過 `IMessageBus.PublishOutboundAsync` 推送訊息，實現「發後即忘」的解耦模式。
 
 ```mermaid
 classDiagram
@@ -211,7 +213,7 @@ classDiagram
         +ProcessAsync(message, ct) string
     }
 
-    class UnifiedMessageProcessor {
+    class MessageCoordinator {
         -IMessageLogStore _logStore
         -ChannelFactory _channelFactory
         -IRecentTargetStore _recentTargetStore
@@ -227,19 +229,19 @@ classDiagram
     }
 
     class NotificationService {
-        <<internal>>
+        <<Domain>>
         -ChannelFactory _channelFactory
         -IChannelSettingsService _settings
         -IMessageBus _messageBus
     }
 
-    IMessageProcessor <|.. UnifiedMessageProcessor : 實作
+    IMessageProcessor <|.. MessageCoordinator : 實作
     INotificationService <|.. NotificationService : 實作
 
-    UnifiedMessageProcessor --> IMessageBus : PublishOutboundAsync
-    UnifiedMessageProcessor --> ChannelFactory : ParseRequestAsync (進站解析)
-    UnifiedMessageProcessor --> IMessageLogStore : 記錄日誌
-    UnifiedMessageProcessor --> IRecentTargetStore : 追蹤最近互動對象
+    MessageCoordinator --> IMessageBus : PublishOutboundAsync
+    MessageCoordinator --> ChannelFactory : ParseRequestAsync (進站解析)
+    MessageCoordinator --> IMessageLogStore : 記錄日誌
+    MessageCoordinator --> IRecentTargetStore : 追蹤最近互動對象
 
     NotificationService --> IMessageBus : PublishOutboundAsync
     NotificationService --> ChannelFactory : 驗證頻道存在
@@ -247,7 +249,7 @@ classDiagram
 ```
 
 > **設計要點**：
-> - **UnifiedMessageProcessor**：處理 Webhook 進站（`HandleInboundAsync`）與手動發送（`SendManualAsync`），兩者最終皆透過 Bus 推送，不直接呼叫 `IChannel.SendAsync`。
+> - **MessageCoordinator**：處理 Webhook 進站（`HandleInboundAsync`）與手動發送（`SendManualAsync`），兩者最終皆透過 Bus 推送，不直接呼叫 `IChannel.SendAsync`。
 > - **NotificationService**：從 `ChannelSettings.Parameters` 取得 `NotificationTargetId`，組裝 `OutboundMessage` 後推送至 Bus，實現排程通知的「發後即忘」。
 > - 兩者皆不持有 `IChannel` 的發送責任 — 實際發送由 `ChannelManager`（§2.3）背景消費處理。
 
@@ -265,7 +267,7 @@ sequenceDiagram
     participant User as 使用者
     participant Platform as 外部平台 (Line/TG)
     participant WC as WebhookController
-    participant UMP as UnifiedMessageProcessor
+    participant MC as MessageCoordinator
     participant CH as IChannel (ParseRequest)
     participant Store as IMessageLogStore
     participant Bus as IMessageBus
@@ -274,13 +276,13 @@ sequenceDiagram
 
     User->>Platform: 發送訊息
     Platform->>WC: Webhook POST
-    WC->>UMP: HandleInboundAsync(tenantId, channel, request)
-    UMP->>CH: ParseRequestAsync(request)
-    CH-->>UMP: InboundMessage
-    UMP->>Store: AddAsync(inboundLog)
-    UMP->>UMP: ProcessAsync(inbound) → 回覆文字
-    UMP->>Bus: PublishOutboundAsync(OutboundMessage)
-    UMP-->>WC: inboundLog
+    WC->>MC: HandleInboundAsync(tenantId, channel, request)
+    MC->>CH: ParseRequestAsync(request)
+    CH-->>MC: InboundMessage
+    MC->>Store: AddAsync(inboundLog)
+    MC->>MC: ProcessAsync(inbound) → 回覆文字
+    MC->>Bus: PublishOutboundAsync(OutboundMessage)
+    MC-->>WC: inboundLog
     WC-->>Platform: HTTP 200 OK (立即響應)
 
     Note over CM: 背景迴圈監聽中...
@@ -348,17 +350,17 @@ sequenceDiagram
     autonumber
     participant UI as 使用者介面
     participant CC as ControlCenterController
-    participant UMP as UnifiedMessageProcessor
+    participant MC as MessageCoordinator
     participant Bus as IMessageBus
     participant Store as IMessageLogStore
     participant CM as ChannelManager (Worker)
     participant CH as IChannel
 
     UI->>CC: POST /api/control/send
-    CC->>UMP: SendManualAsync(request)
-    UMP->>Bus: PublishOutboundAsync(OutboundMessage)
-    UMP->>Store: AddAsync(pendingLog)
-    UMP-->>CC: pendingLog
+    CC->>MC: SendManualAsync(request)
+    MC->>Bus: PublishOutboundAsync(OutboundMessage)
+    MC->>Store: AddAsync(pendingLog)
+    MC-->>CC: pendingLog
     CC-->>UI: 200 OK
 
     CM->>Bus: ConsumeOutboundAsync()
@@ -389,7 +391,7 @@ sequenceDiagram
 3. **多租戶支持**: 資料模型皆包含 `TenantId`，透過 `IChannelSettingsService` 動態載入各租戶的 API Key 與 Token。`ChannelConfig.Channels` 採 `Dictionary<string, ChannelSettings>` 結構，key 為頻道名稱（如 `"line"`、`"telegram"`）。
 4. **Channel 職責單純化**: `IChannel.SendAsync` 回傳 `Task`（而非 `Task<MessageLogEntry>`），失敗時拋出例外。日誌記錄由 `ChannelManager` 統一負責，避免各 Channel 分散處理。
 5. **彈性與容錯**: `ChannelManager` 透過 `IRetryPipeline` 介面整合重試 + Dead Letter Queue + Per-Channel 限流，三道防線確保生產環境穩定性。Core 不直接依賴 Polly，可在 Infrastructure 層替換為任何重試策略。
-6. **封裝性 (Internal 策略)**: Core 中僅需被 Tests 直接建構或被 Api 直接注入具體型別的 class 維持 `public`（如 `ChannelFactory`、`UnifiedMessageProcessor`），其餘實作類別（`MessageBus`、`ChannelManager`、`EmailChannel`、`InMemoryMessageLogStore`、`JsonChannelSettingsStore`、`NotificationService`、`ChannelSettingsResolver`）皆為 `internal`，透過介面與 DI 對外暴露，降低公開 API 表面積。Tests 透過 `InternalsVisibleTo` 存取 internal 類別。
+6. **封裝性 (Internal 策略)**: `ChannelManager` 在 Worker 中為 `internal`。`NotificationService`、`WebhookVerificationService`、`JsonChannelSettingsStore` 在 Domain 中為 `internal`。`MessageBus`、`EmailChannel` 在 Core 中為 `internal`。其餘實作類別透過介面與 DI 對外暴露，降低公開 API 表面積。Tests 透過 `InternalsVisibleTo` 存取 internal 類別。
 
 ---
 
@@ -465,8 +467,8 @@ sequenceDiagram
 
 | 類別 | 用途 |
 |---|---|
-| `UnifiedMessageProcessor` | 實作 IMessageProcessor。HandleInboundAsync 處理 Webhook → Bus、SendManualAsync 手動發送 → Bus、ProcessAsync 產生回覆 |
-| `ChannelSettingsService` | 實作 IChannelSettingsService。讀取/儲存頻道設定 JSON、正規化 legacy key 名稱 |
+| `MessageCoordinator` | 實作 IMessageCoordinator。HandleInboundAsync 處理 Webhook → Bus、SendManualAsync 手動發送 → Bus |
+| `EchoMessageProcessor` | 實作 IMessageProcessor。產生回覆文字 |
 
 ### 7.4 頻道實作 (MessageHub.Core/Channels)
 
@@ -475,32 +477,39 @@ sequenceDiagram
 | `LineChannel` | public | 實作 IChannel。Line Messaging API (Push) |
 | `TelegramChannel` | public | 實作 IChannel。Telegram Bot API (sendMessage) |
 | `EmailChannel` | internal | 實作 IChannel。Email 模擬通道 (POC) |
-| `NotificationService` | internal | 實作 INotificationService。取得 NotificationTargetId → PublishOutboundAsync |
-| `WebhookVerificationService` | public | 實作 IWebhookVerificationService |
 
-### 7.5 訊息匯流排與分發引擎 (MessageHub.Core/Bus)
+### 7.5 訊息匯流排 (MessageHub.Core/Bus)
 
 | 類別 | 可見性 | 用途 |
 |---|---|---|
 | `MessageBus` | internal | 實作 IMessageBus。三條 `System.Threading.Channels` 佇列 + 監控計數 |
-| `ChannelManager` | internal | BackgroundService。消費 Outbound → IRetryPipeline 重試 → 限流 → DLQ → 日誌 |
 
-### 7.6 儲存實作 (MessageHub.Core/Stores)
+### 7.6 領域服務實作 (MessageHub.Domain)
 
 | 類別 | 可見性 | 用途 |
 |---|---|---|
-| `InMemoryMessageLogStore` | internal | 實作 IMessageLogStore (記憶體) |
+| `ChannelSettingsService` | public | 實作 IChannelSettingsService + ICommonParameterProvider |
 | `JsonChannelSettingsStore` | internal | 實作 IChannelSettingsStore (JSON 檔案) |
-| `RecentTargetStore` | public | 實作 IRecentTargetStore (記憶體) |
+| `NotificationService` | internal | 實作 INotificationService。取得 NotificationTargetId → PublishOutboundAsync |
+| `WebhookVerificationService` | internal | 實作 IWebhookVerificationService |
+| `MessagingService` | public | 提供發送訊息與對象解析相關領域邏輯 |
+| `HistoryService` | public | 提供訊息紀錄查詢領域邏輯 |
+| `ContactService` | public | 提供最近互動對象相關領域邏輯 |
 
-### 7.7 基礎設施層實作 (MessageHub.Infrastructure)
+### 7.7 背景服務層 (MessageHub.Worker)
+
+| 類別 | 可見性 | 用途 |
+|---|---|---|
+| `ChannelManager` | internal | BackgroundService。消費 Outbound → IRetryPipeline 重試 → 限流 → DLQ → 日誌 |
+
+### 7.8 基礎設施層實作 (MessageHub.Infrastructure)
 
 | 類別 | 用途 |
 |---|---|
 | `PollyRetryPipeline` | 實作 IRetryPipeline。Polly ResiliencePipeline：3 次指數退避重試 (1s → 2s → 4s) |
-| `DependencyInjection` | AddMessageHubInfrastructure 擴充方法，僅註冊 IRetryPipeline → PollyRetryPipeline |
+| `SqliteMessageLogStore` | 實作 IMessageLogStore (SQLite) |
 
-### 7.8 API 層 (MessageHub.Api)
+### 7.9 API 層 (MessageHub.Api)
 
 | Controller | 路由 | 用途 |
 |---|---|---|
@@ -513,57 +522,58 @@ sequenceDiagram
 
 ## 8. DI 註冊 (DependencyInjection)
 
-本系統採用雙層 DI 註冊，由 `Program.cs` 依序呼叫：
+本系統採用分層 DI 註冊，由 `Program.cs` 呼叫各層的擴充方法：
 
 ```csharp
-// MessageHub.Core — 註冊所有核心服務
+// MessageHub.Core — 僅註冊通訊相關服務
 public static IServiceCollection AddMessageHubCore(this IServiceCollection services)
 {
-    // Stores
-    services.AddSingleton<IMessageLogStore, InMemoryMessageLogStore>();
-    services.AddSingleton<IRecentTargetStore, RecentTargetStore>();
-    services.AddSingleton<IChannelSettingsStore, JsonChannelSettingsStore>();
-
     // Channels
     services.AddSingleton<IChannel, TelegramChannel>();
     services.AddSingleton<IChannel, LineChannel>();
     services.AddSingleton<IChannel, EmailChannel>();
     services.AddSingleton<ChannelFactory>();
 
-    // MessageBus (三通道: Outbound + Inbound + DLQ)
+    // MessageBus
     services.AddSingleton<MessageBus>();
     services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<MessageBus>());
 
     // Services
+    services.AddSingleton<IMessageProcessor, EchoMessageProcessor>();
+    services.AddSingleton<IMessageCoordinator, MessageCoordinator>();
+
+    return services;
+}
+
+// MessageHub.Domain — 頻道設定、通知、Webhook 驗證、領域服務
+public static IServiceCollection AddMessageHubDomain(this IServiceCollection services)
+{
+    services.AddSingleton<IChannelSettingsStore, JsonChannelSettingsStore>();
     services.AddSingleton<ChannelSettingsService>();
     services.AddSingleton<IChannelSettingsService>(sp => sp.GetRequiredService<ChannelSettingsService>());
     services.AddSingleton<ICommonParameterProvider>(sp => sp.GetRequiredService<ChannelSettingsService>());
-    services.AddSingleton<UnifiedMessageProcessor>();
-    services.AddSingleton<IMessageProcessor>(sp => sp.GetRequiredService<UnifiedMessageProcessor>());
-
-    // Notification service
     services.AddSingleton<INotificationService, NotificationService>();
-
-    // Webhook verification
     services.AddSingleton<IWebhookVerificationService, WebhookVerificationService>();
-
-    // ChannelManager (背景 Worker: 重試 + DLQ + 限流)
-    services.AddHostedService<ChannelManager>();
-
+    services.AddSingleton<IMessagingService, MessagingService>();
+    services.AddSingleton<IHistoryService, HistoryService>();
+    services.AddSingleton<IContactService, ContactService>();
     return services;
 }
 
-// MessageHub.Infrastructure — 僅註冊 Polly 重試管線
+// MessageHub.Worker — 背景分發引擎
+public static IServiceCollection AddMessageHubWorker(this IServiceCollection services)
+{
+    services.AddHostedService<ChannelManager>();
+    return services;
+}
+
+// MessageHub.Infrastructure — Polly 重試管線 + SQLite 儲存
 public static IServiceCollection AddMessageHubInfrastructure(this IServiceCollection services)
 {
-    // Polly 重試管線 (3 次指數退避)
     services.AddSingleton<IRetryPipeline, PollyRetryPipeline>();
-
     return services;
 }
 ```
-
-> **設計要點**：Core 負責註冊所有業務邏輯類別（含 `internal` 的 `ChannelManager`），Infrastructure 僅註冊重試策略實作。`Program.cs` 中 `AddMessageHubInfrastructure()` 必須在 `AddMessageHubCore()` 之前或之後呼叫皆可，因為 `IRetryPipeline` 會在 `ChannelManager` 啟動時才被解析。
 
 ---
 
@@ -575,10 +585,15 @@ public static IServiceCollection AddMessageHubInfrastructure(this IServiceCollec
 | 資料模型 | `src/MessageHub.Core/Models/` |
 | 業務服務 | `src/MessageHub.Core/Services/` |
 | 頻道實作 | `src/MessageHub.Core/Channels/` |
-| Bus + ChannelManager | `src/MessageHub.Core/Bus/` |
-| 儲存實作 | `src/MessageHub.Core/Stores/` |
+| 訊息匯流排 | `src/MessageHub.Core/Bus/` |
+| 頻道設定服務 | `src/MessageHub.Domain/Services/ChannelSettingsService.cs` |
+| 通知服務 | `src/MessageHub.Domain/Services/NotificationService.cs` |
+| Webhook 驗證 | `src/MessageHub.Domain/Services/WebhookVerificationService.cs` |
+| JSON 設定儲存 | `src/MessageHub.Domain/Stores/JsonChannelSettingsStore.cs` |
+| Domain DI | `src/MessageHub.Domain/DependencyInjection.cs` |
+| ChannelManager | `src/MessageHub.Worker/ChannelManager.cs` |
+| Worker DI | `src/MessageHub.Worker/DependencyInjection.cs` |
 | 重試管線 (Polly) | `src/MessageHub.Infrastructure/PollyRetryPipeline.cs` |
-| Core DI 註冊 | `src/MessageHub.Core/DependencyInjection.cs` |
-| Infrastructure DI 註冊 | `src/MessageHub.Infrastructure/DependencyInjection.cs` |
+| Infrastructure DI | `src/MessageHub.Infrastructure/DependencyInjection.cs` |
 | API 進入點 | `src/MessageHub.Api/Controllers/` |
 | 測試 | `tests/MessageHub.Tests/` |

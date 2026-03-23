@@ -14,4 +14,8 @@
     <ProjectReference Include="..\MessageHub.Core\MessageHub.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="MessageHub.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -1,6 +1,7 @@
 using MessageHub.Core;
 using MessageHub.Domain;
 using MessageHub.Infrastructure;
+using MessageHub.Worker;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +10,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddMessageHubCore();
 builder.Services.AddMessageHubInfrastructure();
 builder.Services.AddMessageHubDomain();
+builder.Services.AddMessageHubWorker();
 
 var app = builder.Build();
 

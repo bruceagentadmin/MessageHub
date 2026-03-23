@@ -1,14 +1,14 @@
 # MessageHub.Core — 核心層技術文件
 
 > **適用對象**：接手工程師、協作 AI Agent  
-> **最後更新**：2026-03-23  
+> **最後更新**：2026-03-24  
 > **對應框架**：.NET 8 / C# 12
 
 ---
 
 ## 1. 一句話摘要
 
-`MessageHub.Core` 是多頻道統一通訊平台的**核心業務層**，定義所有介面契約、資料模型、訊息匯流排、頻道實作與業務服務，不依賴任何基礎設施框架（Polly、EF Core 等），僅透過介面抽象與 DI 注入與外部整合。
+`MessageHub.Core` 專注於通訊核心，定義所有介面契約、資料模型、訊息匯流排、頻道實作與訊息協調邏輯。非通訊核心職責（如設定管理、主動通知、Webhook 驗證、背景調度）已移至 Domain 與 Worker 層，確保 Core 的純粹性。
 
 ---
 
@@ -25,9 +25,9 @@
                                      │                              └─────┬──────┘
                                      │ 記錄日誌                           │ 背景消費
                                      ▼                              ┌─────▼──────┐
-                              ┌──────────────┐                      │ Channel    │
-                              │ MessageLog   │                      │ Manager    │
-                              │ Store        │                      │ (背景服務)  │
+                              ┌──────────────┐                      │ Worker 層  │
+                              │ Infrastructure│                      │ Channel    │
+                              │ 層 (SQLite)   │                      │ Manager    │
                               └──────────────┘                      └─────┬──────┘
                                                                           │ 重試 + 發送
                                                                     ┌─────▼──────┐
@@ -40,9 +40,9 @@
 ```
 
 **關鍵流程**：
-1. **收訊 (Inbound)**：Webhook → Controller → `MessageCoordinator.HandleInboundAsync` → 解析 + 記錄日誌 + 自動回覆推入 Bus
-2. **發訊 (Outbound)**：控制中心 / 自動回覆 → `MessageBus.PublishOutboundAsync` → `ChannelManager` 背景消費 → 透過 `IChannel.SendAsync` 實際發送
-3. **失敗處理**：發送失敗經 `IRetryPipeline` 重試 3 次 → 仍失敗則進入 Dead Letter Queue
+1. **收訊 (Inbound)**：Webhook → Controller → `MessageCoordinator.HandleInboundAsync` → 解析 + 記錄日誌 + 自動回覆推入 Bus。
+2. **發訊 (Outbound)**：控制中心 / 自動回覆 → `MessageBus.PublishOutboundAsync` → `ChannelManager` (Worker 層) 背景消費 → 透過 `IChannel.SendAsync` 實際發送。
+3. **失敗處理**：發送失敗由 `ChannelManager` 處理重試或推入 Dead Letter Queue。
 
 ---
 
@@ -51,43 +51,36 @@
 ```
 MessageHub.Core/
 ├── Models/                  # 資料模型（record / enum）
-│   ├── InboundMessage.cs        ← 入站訊息
-│   ├── OutboundMessage.cs       ← 出站訊息
-│   ├── DeadLetterMessage.cs     ← 死信訊息
-│   ├── MessageLogEntry.cs       ← 訊息日誌條目
-│   ├── ChannelConfig.cs         ← 頻道總體配置
-│   ├── ChannelSettings.cs       ← 單一頻道設定
-│   ├── ChannelDefinition.cs     ← 頻道能力定義
-│   ├── ChannelTypeDefinition.cs ← 頻道類型 + 欄位定義
-│   ├── ChannelConfigFieldDefinition.cs ← 設定欄位元資料
-│   ├── SendMessageRequest.cs    ← 手動發送請求
-│   ├── WebhookTextMessageRequest.cs ← Webhook 文字請求
-│   ├── WebhookVerifyRequest.cs  ← Webhook 驗證請求
-│   ├── WebhookVerifyResult.cs   ← Webhook 驗證結果
-│   ├── DeliveryStatus.cs        ← 投遞狀態列舉
-│   ├── MessageDirection.cs      ← 訊息方向列舉
-│   └── RecentTargetInfo.cs      ← 最近互動目標
+│   ├── InboundMessage.cs
+│   ├── OutboundMessage.cs
+│   ├── DeadLetterMessage.cs
+│   ├── MessageLogEntry.cs
+│   ├── ChannelConfig.cs
+│   ├── ChannelSettings.cs
+│   ├── ChannelDefinition.cs
+│   ├── ChannelTypeDefinition.cs
+│   ├── ChannelConfigFieldDefinition.cs
+│   ├── SendMessageRequest.cs
+│   ├── WebhookTextMessageRequest.cs
+│   ├── WebhookVerifyRequest.cs
+│   ├── WebhookVerifyResult.cs
+│   ├── DeliveryStatus.cs
+│   ├── MessageDirection.cs
+│   └── RecentTargetInfo.cs
+│
+├── Stores/Models/           # Store 相關模型
 │
 ├── Bus/                     # 訊息匯流排
-│   ├── MessageBus.cs            ← IMessageBus 實作（System.Threading.Channels）
-│   └── ChannelManager.cs        ← BackgroundService，消費 Outbound 佇列
+│   └── MessageBus.cs            ← IMessageBus 實作（System.Threading.Channels）
 │
 ├── Channels/                # 頻道實作
 │   ├── TelegramChannel.cs       ← Telegram Bot API
 │   ├── LineChannel.cs           ← LINE Messaging API
-│   ├── EmailChannel.cs          ← Email（POC no-op）
-│   ├── NotificationService.cs   ← 主動通知服務
-│   └── WebhookVerificationService.cs ← Webhook 連線驗證
+│   └── EmailChannel.cs          ← Email（POC no-op）
 │
 ├── Services/                # 業務服務
 │   ├── MessageCoordinator.cs    ← 訊息協調器（進站/手動發送/日誌）
-│   ├── ChannelSettingsService.cs← 頻道設定 CRUD + 正規化
 │   └── EchoMessageProcessor.cs  ← POC 回覆處理器
-│
-├── Stores/                  # 儲存實作
-│   ├── InMemoryMessageLogStore.cs  ← 記憶體日誌（最多 500 筆）
-│   ├── JsonChannelSettingsStore.cs ← JSON 檔案持久化設定
-│   └── RecentTargetStore.cs        ← 記憶體最近互動目標
 │
 ├── I*.cs                    # 核心介面（共 12 個）
 ├── ChannelFactory.cs        # 頻道工廠（按名稱查找 IChannel）
@@ -98,6 +91,8 @@ MessageHub.Core/
 ---
 
 ## 4. 高層類別圖（UML）
+
+> **註**：`ChannelManager` 已移至 **Worker** 層；`ChannelSettingsService`、`NotificationService` 與 `WebhookVerificationService` 已移至 **Domain** 層。
 
 ```mermaid
 classDiagram
@@ -134,13 +129,6 @@ classDiagram
         <<interface>>
         +ExecuteAsync(action)
     }
-    class IChannelSettingsService {
-        <<interface>>
-        +GetAsync() ChannelConfig
-        +SaveAsync(config) ChannelConfig
-        +GetChannelTypes() IReadOnlyList~ChannelTypeDefinition~
-        +GetSettingsFilePath() string
-    }
     class IMessageLogStore {
         <<interface>>
         +AddAsync(entry)
@@ -158,18 +146,12 @@ classDiagram
         -_inbound : Channel~InboundMessage~
         -_deadLetter : Channel~DeadLetterMessage~
     }
-    class ChannelManager {
-        <<BackgroundService>>
-        -_rateLimiters : ConcurrentDictionary
-        +ExecuteAsync(stoppingToken)
-    }
     class ChannelFactory {
         -_lookup : IReadOnlyDictionary
         +GetChannel(name) IChannel
         +GetDefinitions() IReadOnlyList~ChannelDefinition~
     }
     class MessageCoordinator
-    class ChannelSettingsService
     class EchoMessageProcessor
     class TelegramChannel
     class LineChannel
@@ -182,13 +164,6 @@ classDiagram
     IMessageBus <|.. MessageBus
     IMessageCoordinator <|.. MessageCoordinator
     IMessageProcessor <|.. EchoMessageProcessor
-    IChannelSettingsService <|.. ChannelSettingsService
-
-    ChannelManager --> IMessageBus : 消費 Outbound
-    ChannelManager --> ChannelFactory : 取得 IChannel
-    ChannelManager --> IRetryPipeline : 重試發送
-    ChannelManager --> IMessageLogStore : 記錄結果
-    ChannelManager --> IChannelSettingsService : 讀取設定
 
     MessageCoordinator --> ChannelFactory : 解析頻道
     MessageCoordinator --> IMessageBus : 推送訊息
@@ -204,6 +179,8 @@ classDiagram
 ## 5. 核心訊息流循序圖
 
 ### 5.1 Inbound 收訊流程
+
+> **註**：`RecentTargetStore` 與 `MessageLogStore` 的實作位於 **Infrastructure** 層（SQLite）。
 
 ```mermaid
 sequenceDiagram
@@ -233,6 +210,8 @@ sequenceDiagram
 ```
 
 ### 5.2 Outbound 發訊流程（背景）
+
+> **註**：`ChannelManager` 位於 **Worker** 層；`ChannelSettingsService` 位於 **Domain** 層。
 
 ```mermaid
 sequenceDiagram
@@ -279,11 +258,10 @@ sequenceDiagram
 |---|------|---------|
 | 1 | [Models — 資料模型](docs/01-models.md) | 所有 record/class/enum 的欄位定義、類別圖與生命週期 |
 | 2 | [Interfaces — 核心介面](docs/02-interfaces.md) | 12 個介面的職責、方法簽名與相依關係 |
-| 3 | [MessageBus — 訊息匯流排](docs/03-message-bus.md) | MessageBus + ChannelManager 的佇列架構與循序圖 |
-| 4 | [Channels — 頻道實作](docs/04-channels.md) | Telegram/Line/Email/Notification/Webhook 驗證 |
-| 5 | [Services — 業務服務](docs/05-services.md) | MessageCoordinator + ChannelSettingsService + EchoProcessor |
-| 6 | [Stores — 儲存層](docs/06-stores.md) | InMemory/JSON/RecentTarget 三種 Store 實作 |
-| 7 | [DI — 相依性注入](docs/07-dependency-injection.md) | 完整服務註冊對照表與生命週期說明 |
+| 3 | [MessageBus — 訊息匯流排](docs/03-message-bus.md) | MessageBus 的佇列架構（ChannelManager 移至 Worker 層） |
+| 4 | [Channels — 頻道實作](docs/04-channels.md) | Telegram/Line/Email 頻道實作（Notification/Webhook 移至 Domain 層） |
+| 5 | [Services — 業務服務](docs/05-services.md) | MessageCoordinator 與 EchoProcessor（Settings 移至 Domain 層） |
+| 6 | [DI — 相依性注入](docs/07-dependency-injection.md) | 完整服務註冊對照表與生命週期說明 |
 
 ---
 
@@ -293,9 +271,9 @@ sequenceDiagram
 
 1. 在 `Channels/` 建立 `DiscordChannel.cs`，實作 `IChannel`
 2. 在 `DependencyInjection.cs` 加入 `services.AddSingleton<IChannel, DiscordChannel>()`
-3. 在 `ChannelSettingsService.Definitions` 新增欄位定義
-4. 在 `ChannelSettingsResolver.LooksLikeChannelType` 新增特徵判斷
-5. （選用）在 `WebhookVerificationService.VerifyAsync` 新增驗證策略
+3. 在 `ChannelSettingsResolver.LooksLikeChannelType` 新增特徵判斷
+4. 在 Domain 層的 `ChannelSettingsService.Definitions` 新增欄位定義
+5. （選用）在 Domain 層的 `WebhookVerificationService.VerifyAsync` 新增驗證策略
 
 ### 7.2 如果你要替換訊息處理邏輯
 
@@ -303,28 +281,25 @@ sequenceDiagram
 
 ### 7.3 如果你要替換儲存層
 
-- 日誌持久化：實作 `IMessageLogStore` → 目前由 Infrastructure 層的 `SqliteMessageLogRepository` 提供 SQLite 實作
-- 設定儲存：實作 `IChannelSettingsStore` → 替換 `JsonChannelSettingsStore`
-- 最近互動目標：實作 `IRecentTargetStore` → 目前由 Infrastructure 層的 `SqliteRecentTargetStore` 提供 SQLite 實作
-
-> 注意：Core 層仍保留 `InMemoryMessageLogStore` 與 `RecentTargetStore` 的記憶體實作原始碼，但 DI 註冊已移至 Infrastructure 層，改用 SQLite 持久化實作。
+- 日誌持久化：實作 `IMessageLogStore` → 目前由 Infrastructure 層提供 SQLite 實作。
+- 設定儲存：實作 `IChannelSettingsStore` → 目前由 Domain 層提供 JSON 實作。
+- 最近互動目標：實作 `IRecentTargetStore` → 目前由 Infrastructure 層提供 SQLite 實作。
 
 ### 7.4 關鍵設計決策
 
 | 決策 | 說明 |
 |------|------|
 | **發後即忘 (Fire-and-forget)** | `MessageCoordinator` 只推入 Bus，不等待實際發送結果 |
-| **Per-Channel 速率限制** | `ChannelManager` 用 `SemaphoreSlim(1,1)` 確保同頻道串行發送 |
+| **內部封裝 (Encapsulation)** | `MessageBus` 為 Core 內部實作；`ChannelManager` (Worker) 與 `NotificationService` (Domain) 亦為各層內部實作 |
 | **三條獨立佇列** | Outbound / Inbound / DLQ 完全隔離 |
 | **模糊匹配設定** | `ChannelSettingsResolver` 支援 6 種匹配策略（精確→包含→特徵推斷）|
-| **舊版格式相容** | `JsonChannelSettingsStore` 自動偵測並轉換舊版 Array 格式設定 |
 
 ---
 
 ## 8. 技術限制與已知邊界（POC 階段）
 
-- **~~記憶體儲存~~（已改善）**：日誌與最近互動目標已由 Infrastructure 層以 SQLite 持久化（`SqliteMessageLogRepository`、`SqliteRecentTargetStore`），服務重啟後不再遺失
-- **Email 未實作**：`EmailChannel.SendAsync` 為 no-op
-- **無持久化佇列**：`MessageBus` 使用 `System.Threading.Channels`，服務停止則佇列消失
-- **單體部署**：所有元件在同一個 Process 中運行
-- **無認證授權**：API 端點無 Auth 保護
+- **SQLite 持久化**：日誌與最近互動目標已由 Infrastructure 層以 SQLite 持久化，服務重啟後不再遺失。
+- **Email 未實作**：`EmailChannel.SendAsync` 為 no-op。
+- **無持久化佇列**：`MessageBus` 使用 `System.Threading.Channels`，服務停止則佇列消失。
+- **單體部署**：所有元件在同一個 Process 中運行。
+- **無認證授權**：API 端點無 Auth 保護。
