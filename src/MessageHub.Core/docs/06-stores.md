@@ -6,15 +6,19 @@
 
 ## 總覽
 
-| 類別 | 實作介面 | 儲存方式 | 持久化 | 執行緒安全 |
-|------|---------|---------|--------|-----------|
-| `InMemoryMessageLogStore` | `IMessageLogStore` | 記憶體（ConcurrentQueue）| 否 | 是 |
-| `JsonChannelSettingsStore` | `IChannelSettingsStore` | JSON 檔案 | 是 | 否（單寫者假設）|
-| `RecentTargetStore` | `IRecentTargetStore` | 記憶體（ConcurrentDictionary）| 否 | 是 |
+| 類別 | 實作介面 | 儲存方式 | 持久化 | 執行緒安全 | DI 註冊狀態 |
+|------|---------|---------|--------|-----------|------------|
+| `InMemoryMessageLogStore` | `IMessageLogStore` | 記憶體（ConcurrentQueue）| 否 | 是 | ⚠️ 已由 Infrastructure 層 SQLite 實作取代 |
+| `JsonChannelSettingsStore` | `IChannelSettingsStore` | JSON 檔案 | 是 | 否（單寫者假設）| ✅ Core DI 註冊中 |
+| `RecentTargetStore` | `IRecentTargetStore` | 記憶體（ConcurrentDictionary）| 否 | 是 | ⚠️ 已由 Infrastructure 層 SQLite 實作取代 |
+
+> **重要變更**：`IMessageLogStore` 與 `IRecentTargetStore` 的 DI 註冊已從 Core 層移至 Infrastructure 層，分別由 `SqliteMessageLogRepository` 與 `SqliteRecentTargetStore` 提供 SQLite 持久化實作。Core 層仍保留記憶體實作的原始碼，可作為測試用途或備用方案。
 
 ---
 
 ## InMemoryMessageLogStore
+
+> ⚠️ **DI 註冊已移至 Infrastructure 層**：目前 `IMessageLogStore` 由 `SqliteMessageLogRepository`（SQLite 持久化）提供實作，透過 `AddMessageHubInfrastructure()` 註冊。以下為 Core 層保留的記憶體實作說明。
 
 ### 資料結構
 
@@ -139,6 +143,8 @@ private static readonly JsonSerializerOptions JsonOptions = new()
 
 ## RecentTargetStore
 
+> ⚠️ **DI 註冊已移至 Infrastructure 層**：目前 `IRecentTargetStore` 由 `SqliteRecentTargetStore`（SQLite 持久化）提供實作，透過 `AddMessageHubInfrastructure()` 註冊。以下為 Core 層保留的記憶體實作說明。
+
 ### 資料結構
 
 ```csharp
@@ -182,25 +188,26 @@ sequenceDiagram
 
 ## 替換指南
 
-若要將 POC 的記憶體儲存替換為生產級實作：
+若要將儲存實作替換為其他方案：
 
 ### 日誌儲存（IMessageLogStore）
 
-1. 建立新類別（如 `SqlMessageLogStore`）實作 `IMessageLogStore`
-2. 在 `DependencyInjection.cs` 替換：
-   ```csharp
-   services.AddSingleton<IMessageLogStore, SqlMessageLogStore>();
-   ```
+目前已由 Infrastructure 層的 `SqliteMessageLogRepository` 提供 SQLite 持久化實作。若要替換：
+
+1. 建立新類別實作 `IMessageLogStore`
+2. 在 `Infrastructure/DependencyInjection.cs` 替換註冊
 3. 建議支援：分頁查詢、按頻道/方向/狀態篩選、全文搜尋
 
 ### 設定儲存（IChannelSettingsStore）
 
 1. 建立新類別（如 `DbChannelSettingsStore`）實作 `IChannelSettingsStore`
-2. 在 `DependencyInjection.cs` 替換
+2. 在 `Core/DependencyInjection.cs` 替換
 3. 建議支援：併發安全、變更審計、版本控制
 
 ### 最近互動目標（IRecentTargetStore）
 
+目前已由 Infrastructure 層的 `SqliteRecentTargetStore` 提供 SQLite 持久化實作。若要替換：
+
 1. 建立新類別實作 `IRecentTargetStore`
-2. 在 `DependencyInjection.cs` 替換
-3. 建議支援：每頻道多目標記錄、租戶隔離、持久化
+2. 在 `Infrastructure/DependencyInjection.cs` 替換
+3. 建議支援：每頻道多目標記錄、租戶隔離

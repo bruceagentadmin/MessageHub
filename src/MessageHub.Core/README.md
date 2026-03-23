@@ -89,7 +89,7 @@ MessageHub.Core/
 │   ├── JsonChannelSettingsStore.cs ← JSON 檔案持久化設定
 │   └── RecentTargetStore.cs        ← 記憶體最近互動目標
 │
-├── I*.cs                    # 核心介面（共 10 個）
+├── I*.cs                    # 核心介面（共 12 個）
 ├── ChannelFactory.cs        # 頻道工廠（按名稱查找 IChannel）
 ├── ChannelSettingsResolver.cs # 頻道設定模糊匹配解析器
 └── DependencyInjection.cs   # DI 註冊擴充方法
@@ -139,6 +139,7 @@ classDiagram
         +GetAsync() ChannelConfig
         +SaveAsync(config) ChannelConfig
         +GetChannelTypes() IReadOnlyList~ChannelTypeDefinition~
+        +GetSettingsFilePath() string
     }
     class IMessageLogStore {
         <<interface>>
@@ -277,7 +278,7 @@ sequenceDiagram
 | # | 文件 | 涵蓋範圍 |
 |---|------|---------|
 | 1 | [Models — 資料模型](docs/01-models.md) | 所有 record/class/enum 的欄位定義、類別圖與生命週期 |
-| 2 | [Interfaces — 核心介面](docs/02-interfaces.md) | 10 個介面的職責、方法簽名與相依關係 |
+| 2 | [Interfaces — 核心介面](docs/02-interfaces.md) | 12 個介面的職責、方法簽名與相依關係 |
 | 3 | [MessageBus — 訊息匯流排](docs/03-message-bus.md) | MessageBus + ChannelManager 的佇列架構與循序圖 |
 | 4 | [Channels — 頻道實作](docs/04-channels.md) | Telegram/Line/Email/Notification/Webhook 驗證 |
 | 5 | [Services — 業務服務](docs/05-services.md) | MessageCoordinator + ChannelSettingsService + EchoProcessor |
@@ -302,8 +303,11 @@ sequenceDiagram
 
 ### 7.3 如果你要替換儲存層
 
-- 日誌持久化：實作 `IMessageLogStore` → 替換 `InMemoryMessageLogStore`
+- 日誌持久化：實作 `IMessageLogStore` → 目前由 Infrastructure 層的 `SqliteMessageLogRepository` 提供 SQLite 實作
 - 設定儲存：實作 `IChannelSettingsStore` → 替換 `JsonChannelSettingsStore`
+- 最近互動目標：實作 `IRecentTargetStore` → 目前由 Infrastructure 層的 `SqliteRecentTargetStore` 提供 SQLite 實作
+
+> 注意：Core 層仍保留 `InMemoryMessageLogStore` 與 `RecentTargetStore` 的記憶體實作原始碼，但 DI 註冊已移至 Infrastructure 層，改用 SQLite 持久化實作。
 
 ### 7.4 關鍵設計決策
 
@@ -319,7 +323,7 @@ sequenceDiagram
 
 ## 8. 技術限制與已知邊界（POC 階段）
 
-- **記憶體儲存**：日誌與最近互動目標在服務重啟後遺失
+- **~~記憶體儲存~~（已改善）**：日誌與最近互動目標已由 Infrastructure 層以 SQLite 持久化（`SqliteMessageLogRepository`、`SqliteRecentTargetStore`），服務重啟後不再遺失
 - **Email 未實作**：`EmailChannel.SendAsync` 為 no-op
 - **無持久化佇列**：`MessageBus` 使用 `System.Threading.Channels`，服務停止則佇列消失
 - **單體部署**：所有元件在同一個 Process 中運行

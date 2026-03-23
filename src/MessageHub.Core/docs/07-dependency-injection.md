@@ -20,25 +20,39 @@ builder.Services.AddMessageHubCore();
 
 ## 完整服務註冊對照表
 
+### Core 層（`AddMessageHubCore`）— 共 15 筆註冊
+
 | # | 介面 / 型別 | 實作 | 生命週期 | 說明 |
 |---|-------------|------|---------|------|
-| 1 | `IMessageLogStore` | `InMemoryMessageLogStore` | Singleton | 記憶體日誌，最多 500 筆 |
-| 2 | `IRecentTargetStore` | `RecentTargetStore` | Singleton | 記憶體最近互動目標 |
-| 3 | `IChannelSettingsStore` | `JsonChannelSettingsStore` | Singleton | JSON 檔案持久化設定 |
-| 4 | `IChannel` | `TelegramChannel` | Singleton | Telegram 頻道 |
-| 5 | `IChannel` | `LineChannel` | Singleton | LINE 頻道 |
-| 6 | `IChannel` | `EmailChannel` | Singleton | Email 頻道（POC no-op）|
-| 7 | `ChannelFactory` | `ChannelFactory` | Singleton | 頻道查找工廠 |
-| 8 | `MessageBus`（具體型別）| `MessageBus` | Singleton | 佇列主實例 |
-| 9 | `IMessageBus` | → `MessageBus`（委派）| Singleton | 介面指向同一實例 |
-| 10 | `ChannelSettingsService`（具體型別）| `ChannelSettingsService` | Singleton | 設定服務主實例 |
-| 11 | `IChannelSettingsService` | → `ChannelSettingsService`（委派）| Singleton | 介面指向同一實例 |
-| 12 | `ICommonParameterProvider` | → `ChannelSettingsService`（委派）| Singleton | 介面指向同一實例 |
-| 13 | `IMessageProcessor` | `EchoMessageProcessor` | Singleton | POC 回覆處理器 |
-| 14 | `IMessageCoordinator` | `MessageCoordinator` | Singleton | 訊息協調器 |
-| 15 | `INotificationService` | `NotificationService` | Singleton | 主動通知服務 |
-| 16 | `IWebhookVerificationService` | `WebhookVerificationService` | Singleton | Webhook 驗證 |
-| 17 | `IHostedService` | `ChannelManager` | HostedService | 背景佇列消費者 |
+| 1 | `IChannelSettingsStore` | `JsonChannelSettingsStore` | Singleton | JSON 檔案持久化設定 |
+| 2 | `IChannel` | `TelegramChannel` | Singleton | Telegram 頻道 |
+| 3 | `IChannel` | `LineChannel` | Singleton | LINE 頻道 |
+| 4 | `IChannel` | `EmailChannel` | Singleton | Email 頻道（POC no-op）|
+| 5 | `ChannelFactory` | `ChannelFactory` | Singleton | 頻道查找工廠 |
+| 6 | `MessageBus`（具體型別）| `MessageBus` | Singleton | 佇列主實例 |
+| 7 | `IMessageBus` | → `MessageBus`（委派）| Singleton | 介面指向同一實例 |
+| 8 | `ChannelSettingsService`（具體型別）| `ChannelSettingsService` | Singleton | 設定服務主實例 |
+| 9 | `IChannelSettingsService` | → `ChannelSettingsService`（委派）| Singleton | 介面指向同一實例 |
+| 10 | `ICommonParameterProvider` | → `ChannelSettingsService`（委派）| Singleton | 介面指向同一實例 |
+| 11 | `IMessageProcessor` | `EchoMessageProcessor` | Singleton | POC 回覆處理器 |
+| 12 | `IMessageCoordinator` | `MessageCoordinator` | Singleton | 訊息協調器 |
+| 13 | `INotificationService` | `NotificationService` | Singleton | 主動通知服務 |
+| 14 | `IWebhookVerificationService` | `WebhookVerificationService` | Singleton | Webhook 驗證 |
+| 15 | `IHostedService` | `ChannelManager` | HostedService | 背景佇列消費者 |
+
+### Infrastructure 層（`AddMessageHubInfrastructure`）— 儲存與重試
+
+| # | 介面 / 型別 | 實作 | 生命週期 | 說明 |
+|---|-------------|------|---------|------|
+| 1 | `IRetryPipeline` | `PollyRetryPipeline` | Singleton | Polly 3 次指數退避重試 |
+| 2 | `SqliteConnectionFactory` | `SqliteConnectionFactory` | Singleton | SQLite 連線工廠 |
+| 3 | `SqliteMessageLogRepository`（具體型別）| `SqliteMessageLogRepository` | Singleton | 日誌儲存主實例 |
+| 4 | `IMessageLogStore` | → `SqliteMessageLogRepository`（委派）| Singleton | Core 介面指向 SQLite 實作 |
+| 5 | `IMessageLogRepository` | → `SqliteMessageLogRepository`（委派）| Singleton | Domain 介面指向同一實例 |
+| 6 | `IRecentTargetStore` | `SqliteRecentTargetStore` | Singleton | SQLite 最近互動目標 |
+| 7 | `IContactRepository` | `SqliteContactRepository` | Singleton | SQLite 聯絡人儲存 |
+
+> **注意**：`IMessageLogStore` 與 `IRecentTargetStore` 原先由 Core 層以記憶體實作（`InMemoryMessageLogStore`、`RecentTargetStore`）註冊，現已移至 Infrastructure 層改用 SQLite 持久化。Core 層仍保留記憶體實作原始碼供測試或備用。
 
 ---
 
@@ -46,10 +60,13 @@ builder.Services.AddMessageHubCore();
 
 ```mermaid
 graph TB
-    subgraph "Stores（儲存層）"
-        S1[InMemoryMessageLogStore]
-        S2[RecentTargetStore]
+    subgraph "Core — Stores（儲存層）"
         S3[JsonChannelSettingsStore]
+    end
+
+    subgraph "Infrastructure — Stores（持久化）"
+        IS1[SqliteMessageLogRepository]
+        IS2[SqliteRecentTargetStore]
     end
 
     subgraph "Channels（頻道）"
@@ -82,13 +99,13 @@ graph TB
     CM --> MB
     CM --> CF
     CM --> CSS
-    CM --> S1
+    CM --> IS1
 
     MC --> CF
     MC --> MB
     MC --> EMP
-    MC --> S1
-    MC --> S2
+    MC --> IS1
+    MC --> IS2
 
     CSS --> S3
 
@@ -148,7 +165,7 @@ services.AddHostedService<ChannelManager>();
 
 所有服務均註冊為 **Singleton**，原因：
 
-1. **記憶體儲存**：`InMemoryMessageLogStore`、`RecentTargetStore` 需要跨請求共享資料
+1. **持久化儲存**：`SqliteMessageLogRepository`、`SqliteRecentTargetStore` 以 SQLite 持久化，Singleton 確保連線重用
 2. **佇列共享**：`MessageBus` 必須全域唯一，所有生產者/消費者共用同一組佇列
 3. **HttpClient 重用**：頻道實作內建 `HttpClient`，避免 Socket 耗盡
 4. **設定快取**：`ChannelSettingsService` 作為 Singleton 可在後續版本加入記憶體快取

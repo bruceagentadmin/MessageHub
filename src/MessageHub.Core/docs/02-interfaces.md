@@ -18,8 +18,8 @@
 | `IChannelSettingsService` | 頻道設定 CRUD | ChannelSettingsService |
 | `IChannelSettingsStore` | 頻道設定持久化 I/O | JsonChannelSettingsStore |
 | `ICommonParameterProvider` | 通用鍵值參數查詢 | ChannelSettingsService |
-| `IMessageLogStore` | 訊息日誌寫入/查詢 | InMemoryMessageLogStore |
-| `IRecentTargetStore` | 最近互動目標記錄 | RecentTargetStore |
+| `IMessageLogStore` | 訊息日誌寫入/查詢 | SqliteMessageLogRepository（Infrastructure 層）|
+| `IRecentTargetStore` | 最近互動目標記錄 | SqliteRecentTargetStore（Infrastructure 層）|
 | `INotificationService` | 系統主動通知 | NotificationService |
 | `IWebhookVerificationService` | Webhook 連線驗證 | WebhookVerificationService |
 
@@ -193,7 +193,7 @@ public interface IChannelSettingsService
 }
 ```
 
-**職責**：頻道設定的 CRUD 操作與正規化處理。
+**職責**：頻道設定的 CRUD 操作與正規化處理。`GetSettingsFilePath()` 回傳設定檔的實際檔案路徑。
 
 ---
 
