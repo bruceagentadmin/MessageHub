@@ -2,14 +2,16 @@ using MessageHub.Api.Controllers;
 using MessageHub.Core;
 using MessageHub.Core.Models;
 using MessageHub.Core.Services;
+using MessageHub.Domain.Models;
+using MessageHub.Domain.Repositories;
+using MessageHub.Domain.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MessageHub.Tests;
 
 public class ControlCenterControllerTests
 {
-    [Fact]
-    public async Task Send_ShouldReturnBadRequest_WhenRequiredFieldsMissing()
+    private static ControlCenterController CreateController()
     {
         var logStore = new FakeLogStore();
         var messageBus = new ControllerFakeMessageBus();
@@ -19,7 +21,15 @@ public class ControlCenterControllerTests
         var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
         var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
         var webhookVerification = new FakeWebhookVerificationServiceForController();
-        var controller = new ControlCenterController(coordinator, settingsService, webhookVerification);
+        var contactRepository = new FakeContactRepository();
+        IMessagingService messagingService = new MessagingService(coordinator, settingsService, webhookVerification, contactRepository);
+        return new ControlCenterController(messagingService);
+    }
+
+    [Fact]
+    public async Task Send_ShouldReturnBadRequest_WhenRequiredFieldsMissing()
+    {
+        var controller = CreateController();
 
         var result = await controller.Send(new SendMessageRequest("", "", "", "", null), default);
 
@@ -30,15 +40,7 @@ public class ControlCenterControllerTests
     [Fact]
     public async Task Send_ShouldReturnOk_WhenPayloadIsValid()
     {
-        var logStore = new FakeLogStore();
-        var messageBus = new ControllerFakeMessageBus();
-        var factory = new ChannelFactory([new FakeChannel("telegram")]);
-        var recentTargets = new FakeRecentTargetStore();
-        var processor = new EchoMessageProcessor();
-        var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
-        var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
-        var webhookVerification = new FakeWebhookVerificationServiceForController();
-        var controller = new ControlCenterController(coordinator, settingsService, webhookVerification);
+        var controller = CreateController();
 
         var result = await controller.Send(new SendMessageRequest("tenant", "telegram", "chat-1", "hello", "test"), default);
 
@@ -52,15 +54,7 @@ public class ControlCenterControllerTests
     [Fact]
     public async Task VerifyWebhook_ShouldReturnBadRequest_WhenChannelIdMissing()
     {
-        var logStore = new FakeLogStore();
-        var messageBus = new ControllerFakeMessageBus();
-        var factory = new ChannelFactory([new FakeChannel("telegram")]);
-        var recentTargets = new FakeRecentTargetStore();
-        var processor = new EchoMessageProcessor();
-        var coordinator = new MessageCoordinator(logStore, factory, recentTargets, messageBus, processor);
-        var settingsService = new ChannelSettingsService(new FakeSettingsStoreForController());
-        var webhookVerification = new FakeWebhookVerificationServiceForController();
-        var controller = new ControlCenterController(coordinator, settingsService, webhookVerification);
+        var controller = CreateController();
 
         var result = await controller.VerifyWebhook(new WebhookVerifyRequest(""), default);
 
@@ -136,4 +130,15 @@ file sealed class FakeWebhookVerificationServiceForController : IWebhookVerifica
 {
     public Task<WebhookVerifyResult> VerifyAsync(string channelId, CancellationToken cancellationToken = default)
         => Task.FromResult(new WebhookVerifyResult(channelId, "Line", true, "verify", 200, "ok"));
+}
+
+file sealed class FakeContactRepository : IContactRepository
+{
+    public Task UpsertAsync(Contact contact, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<IReadOnlyList<Contact>> GetByChannelAsync(string channel, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<Contact>>([]);
+    public Task<IReadOnlyList<Contact>> GetAllAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<Contact>>([]);
+    public Task<Contact?> FindAsync(string channel, string platformUserId, CancellationToken ct = default)
+        => Task.FromResult<Contact?>(null);
 }

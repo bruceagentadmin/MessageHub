@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MessageHub.Core\MessageHub.Core.csproj" />
+    <ProjectReference Include="..\MessageHub.Domain\MessageHub.Domain.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -11,6 +12,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
     <PackageReference Include="Polly.Core" Version="8.5.2" />
   </ItemGroup>

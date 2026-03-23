@@ -1,6 +1,6 @@
 using System.Text.Json;
-using MessageHub.Core;
 using MessageHub.Core.Models;
+using MessageHub.Domain.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -8,7 +8,7 @@ namespace MessageHub.Api.Controllers;
 
 [ApiController]
 [Route("api/telegram")]
-public sealed class TelegramWebhookController(IMessageCoordinator coordinator, ILogger<TelegramWebhookController> logger) : ControllerBase
+public sealed class TelegramWebhookController(IMessagingService messagingService, ILogger<TelegramWebhookController> logger) : ControllerBase
 {
     [HttpPost("webhook")]
     public async Task<IActionResult> Handle([FromBody] JsonElement data, CancellationToken cancellationToken)
@@ -48,7 +48,7 @@ public sealed class TelegramWebhookController(IMessageCoordinator coordinator, I
         try
         {
             var request = new WebhookTextMessageRequest(chatId, displayName ?? chatId, text);
-            await coordinator.HandleInboundAsync("telegram-default", "telegram", request, cancellationToken);
+            await messagingService.HandleInboundAsync("telegram-default", "telegram", request, cancellationToken);
         }
         catch (Exception ex)
         {

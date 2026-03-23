@@ -22,12 +22,8 @@ public static class DependencyInjection
     public static IServiceCollection AddMessageHubCore(this IServiceCollection services)
     {
         // ─── 儲存層（Stores） ────────────────────────────────────────────────
-        // 各 Store 均為 Singleton，整個應用程式生命週期內共享同一個實例：
-        // - IMessageLogStore：記憶體內訊息日誌（最多 500 筆，服務重啟後清空）
-        // - IRecentTargetStore：各頻道最後一次互動對象的記憶體快取
-        // - IChannelSettingsStore：JSON 檔案持久化的頻道設定（讀寫 data/channel-settings.json）
-        services.AddSingleton<IMessageLogStore, InMemoryMessageLogStore>();
-        services.AddSingleton<IRecentTargetStore, RecentTargetStore>();
+        // IMessageLogStore、IRecentTargetStore 由 Infrastructure 層以 SQLite 實作註冊。
+        // IChannelSettingsStore：JSON 檔案持久化的頻道設定（讀寫 data/channel-settings.json）
         services.AddSingleton<IChannelSettingsStore, JsonChannelSettingsStore>();
 
         // ─── 頻道實作（Channels） ────────────────────────────────────────────

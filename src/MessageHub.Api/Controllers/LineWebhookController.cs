@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using MessageHub.Core;
 using MessageHub.Core.Models;
+using MessageHub.Domain.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -10,8 +11,7 @@ namespace MessageHub.Api.Controllers;
 [ApiController]
 [Route("api/line")]
 public sealed class LineWebhookController(
-    IMessageCoordinator coordinator,
-    IChannelSettingsService channelSettingsService,
+    IMessagingService messagingService,
     ILogger<LineWebhookController> logger) : ControllerBase
 {
     private static readonly HttpClient HttpClient = new();
@@ -49,7 +49,7 @@ public sealed class LineWebhookController(
         {
             var displayName = await GetUserProfileNameAsync(userId, cancellationToken);
             var request = new WebhookTextMessageRequest(userId, displayName, text);
-            await coordinator.HandleInboundAsync("line-default", "line", request, cancellationToken);
+            await messagingService.HandleInboundAsync("line-default", "line", request, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -63,7 +63,7 @@ public sealed class LineWebhookController(
     {
         try
         {
-            var config = await channelSettingsService.GetAsync(cancellationToken);
+            var config = await messagingService.GetChannelSettingsAsync(cancellationToken);
             var settings = ChannelSettingsResolver.FindSettings(config, "line");
             var token = settings?.Parameters.GetValueOrDefault("ChannelAccessToken")?.Trim();
 

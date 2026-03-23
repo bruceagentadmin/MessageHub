@@ -70,6 +70,12 @@
     .switch input { width:18px; height:18px; margin:0; }
     .config-fields { display:grid; gap:12px; margin-top:12px; }
     .divider { height:1px; background:var(--line); margin:16px 0; }
+    .tabs { display:flex; gap:20px; border-bottom:1px solid var(--line); margin-bottom:20px; }
+    .tab { background:transparent; border:none; color:var(--muted); font-size:16px; font-weight:600; padding:10px 4px; border-bottom:2px solid transparent; border-radius:0; cursor:pointer; min-height:auto; }
+    .tab:hover { color:var(--text); }
+    .tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+    .pagination { display:flex; justify-content:space-between; align-items:center; margin-top:16px; gap:12px; }
+    .pagination-controls { display:flex; gap:8px; }
     pre { white-space:pre-wrap; }
     @media (max-width:900px) {
       .grid, .field-grid, .settings-config { grid-template-columns:1fr; }
@@ -90,7 +96,12 @@
       </div>
     </div>
 
-    <div class="grid">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('control')">控制中心</button>
+      <button class="tab" onclick="switchTab('history')">歷史紀錄</button>
+    </div>
+
+    <div id="tabControl" class="grid">
       <section class="card">
         <div class="summary-card">
           <div>
@@ -134,7 +145,72 @@
         </table>
       </section>
     </div>
-  </div>
+
+    <div id="tabHistory" style="display: none;">
+      <section class="card" style="margin-bottom:20px;">
+        <form id="historyFilterForm" class="field-grid">
+          <label>頻道<input name="channel" placeholder="頻道" /></label>
+          <label>方向
+            <select name="direction">
+              <option value="">全部</option>
+              <option value="0">Inbound</option>
+              <option value="1">Outbound</option>
+            </select>
+          </label>
+          <label>狀態
+            <select name="status">
+              <option value="">全部</option>
+              <option value="0">Queued</option>
+              <option value="1">Delivered</option>
+              <option value="2">Failed</option>
+            </select>
+          </label>
+          <label>目標 ID<input name="targetId" placeholder="TargetId" /></label>
+          <label>內容關鍵字<input name="keyword" placeholder="內容關鍵字" /></label>
+          <label>起始時間<input type="datetime-local" name="from" /></label>
+          <label>結束時間<input type="datetime-local" name="to" /></label>
+          <label>每頁筆數
+            <select name="pageSize">
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <div class="toolbar full" style="margin-top:12px; margin-bottom:0;">
+            <button type="submit">搜尋</button>
+            <button type="reset" class="ghost">重設</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="toolbar">
+          <div>
+            <h2>搜尋結果</h2>
+            <div id="historySummary" class="small">請設定條件後進行搜尋</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>時間</th><th class="channel-col">頻道</th><th class="direction-col">方向</th><th class="status-col">狀態</th><th>目標</th><th class="content-cell">內容</th><th>來源</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody">
+              <tr><td colspan="7" style="text-align:center;" class="muted">尚無資料</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <div></div>
+          <div class="pagination-controls">
+            <button type="button" class="secondary mini" id="prevPageBtn" disabled>上一頁</button>
+            <button type="button" class="secondary mini" id="nextPageBtn" disabled>下一頁</button>
+          </div>
+        </div>
+      </section>
+    </div>
 
   <div class="modal-backdrop" id="settingsModal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
@@ -523,6 +599,82 @@
     document.getElementById('addChannelBtn').addEventListener('click', () => document.getElementById('settingsForms').appendChild(createChannelForm()));
     document.getElementById('clearSelectedTargetBtn').addEventListener('click', clearSelectedTarget);
     document.getElementById('settingsModal').addEventListener('click', event => { if (event.target.id === 'settingsModal') closeSettingsModal(); });
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      document.getElementById('tabControl').style.display = tabId === 'control' ? '' : 'none';
+      document.getElementById('tabHistory').style.display = tabId === 'history' ? 'block' : 'none';
+      if (tabId === 'history' && !window.historyLoaded) {
+        searchHistory(1);
+      }
+    }
+
+    let currentHistoryPage = 1;
+
+    async function searchHistory(page = 1) {
+      window.historyLoaded = true;
+      currentHistoryPage = page;
+      const form = document.getElementById('historyFilterForm');
+      const formData = new FormData(form);
+      const params = new URLSearchParams();
+      
+      for (const [key, value] of formData.entries()) {
+        if (value) params.append(key, value);
+      }
+      params.append('page', page);
+      
+      const tbody = document.getElementById('historyBody');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;" class="muted">搜尋中...</td></tr>';
+      
+      try {
+        const res = await fetch(`/api/history/logs?${params.toString()}`);
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        
+        document.getElementById('historySummary').textContent = `共 ${data.totalCount} 筆，第 ${data.page} / ${data.totalPages || 1} 頁`;
+        
+        if (!data.items || data.items.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;" class="muted">找不到符合條件的紀錄</td></tr>';
+        } else {
+          tbody.innerHTML = data.items.map(x => {
+            const targetLabel = getTargetLabel(x);
+            const dirStr = x.direction === 0 ? 'Inbound' : (x.direction === 1 ? 'Outbound' : x.direction);
+            const statStr = x.status === 0 ? 'Queued' : (x.status === 1 ? 'Delivered' : (x.status === 2 ? 'Failed' : x.status));
+            return `
+              <tr>
+                <td>${new Date(x.timestamp).toLocaleString()}</td>
+                <td class="channel-col">${escapeHtml(x.channel)}</td>
+                <td class="direction-col" title="${escapeHtml(dirStr)}"><span class="emoji-direction">${getDirectionEmoji(dirStr)}</span></td>
+                <td class="status-col ${getStatusClass(statStr)}">${escapeHtml(statStr)}</td>
+                <td><div>${escapeHtml(targetLabel)}</div></td>
+                <td class="content-cell">${escapeHtml(x.content)}</td>
+                <td>${escapeHtml(x.source)}<div class="small">tenant=${escapeHtml(x.tenantId)}${x.details ? ` / ${escapeHtml(x.details)}` : ''}</div></td>
+              </tr>`;
+          }).join('');
+        }
+        
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+        prevBtn.disabled = !data.hasPrevious;
+        nextBtn.disabled = !data.hasNext;
+        
+        prevBtn.onclick = () => searchHistory(data.page - 1);
+        nextBtn.onclick = () => searchHistory(data.page + 1);
+        
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;" class="error">載入失敗：${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    document.getElementById('historyFilterForm').addEventListener('submit', e => {
+      e.preventDefault();
+      searchHistory(1);
+    });
+
+    document.getElementById('historyFilterForm').addEventListener('reset', () => {
+      setTimeout(() => searchHistory(1), 0);
+    });
 
     loadAll();
     setInterval(loadLogs, 30000);

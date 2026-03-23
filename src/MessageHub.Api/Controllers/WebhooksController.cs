@@ -1,12 +1,12 @@
-using MessageHub.Core;
 using MessageHub.Core.Models;
+using MessageHub.Domain.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MessageHub.Api.Controllers;
 
 [ApiController]
 [Route("api/webhooks/{channel}/{tenantId}")]
-public sealed class WebhooksController(IMessageCoordinator coordinator) : ControllerBase
+public sealed class WebhooksController(IMessagingService messagingService) : ControllerBase
 {
     [HttpPost("text")]
     public async Task<ActionResult<MessageLogEntry>> ReceiveText(string channel, string tenantId, [FromBody] WebhookTextMessageRequest request, CancellationToken cancellationToken)
@@ -16,7 +16,7 @@ public sealed class WebhooksController(IMessageCoordinator coordinator) : Contro
             return BadRequest("chatId, senderId, content 必填");
         }
 
-        var result = await coordinator.HandleInboundAsync(tenantId, channel, request, cancellationToken);
+        var result = await messagingService.HandleInboundAsync(tenantId, channel, request, cancellationToken);
         return Ok(result);
     }
 }
