@@ -1,4 +1,4 @@
-namespace MessageHub.Core;
+namespace MessageHub.Domain;
 
 /// <summary>
 /// 通用參數提供者介面 — 負責依鍵值非同步取得多租戶環境下的組態參數。

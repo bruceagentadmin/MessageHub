@@ -1,6 +1,6 @@
 # 04 — Channels 頻道實作
 
-> 本文件詳述 `Channels/` 資料夾下的所有頻道相關實作。
+> 本文件詳述 `Channels/` 資料夾下的所有頻道實作。
 
 ---
 
@@ -11,8 +11,8 @@
 | `TelegramChannel` | `IChannel` | Telegram Bot API 訊息收發 |
 | `LineChannel` | `IChannel` | LINE Messaging API 訊息收發 |
 | `EmailChannel` | `IChannel` | Email 模擬通道（POC no-op）|
-| `NotificationService` | `INotificationService` | 系統主動通知推送 |
-| `WebhookVerificationService` | `IWebhookVerificationService` | Webhook 連線驗證 |
+
+> **已遷移至 Domain 層**：`NotificationService`（`INotificationService`）與 `WebhookVerificationService`（`IWebhookVerificationService`）原先位於此資料夾，現已移至 `MessageHub.Domain.Services`。
 
 ---
 
@@ -127,60 +127,6 @@ flowchart TD
 - `SendAsync`：直接返回 `Task.CompletedTask`，不執行實際 SMTP 發送
 
 **未來擴展方向**：整合 MailKit 或 SmtpClient，從 `ChannelSettings.Parameters` 讀取 Host / Port / Username / Password。
-
----
-
-## NotificationService
-
-系統主動通知服務，與一般的訊息收發不同 — 這是**系統主動發起**的推送。
-
-### 流程
-
-```mermaid
-flowchart TD
-    A[SendNotificationAsync] --> B[讀取 ChannelConfig]
-    B --> C{頻道已啟用?}
-    C -- 否 --> D[拋出 InvalidOperationException]
-    C -- 是 --> E[取出 NotificationTargetId]
-    E --> F{TargetId 有值?}
-    F -- 否 --> G[拋出 InvalidOperationException]
-    F -- 是 --> H[驗證 ChannelFactory 有此頻道]
-    H --> I[建立 OutboundMessage]
-    I --> J[MessageBus.PublishOutboundAsync]
-```
-
-**關鍵設定**：頻道的 `Parameters` 中需要有 `NotificationTargetId` 鍵值。
-
----
-
-## WebhookVerificationService
-
-驗證各頻道的 Webhook URL 是否正確設定並可連線。
-
-### 驗證策略
-
-```mermaid
-flowchart TD
-    A[VerifyAsync channelId] --> B[讀取 ChannelConfig]
-    B --> C{找到頻道設定?}
-    C -- 否 --> D[回傳失敗: 找不到頻道]
-    C -- 是 --> E{WebhookUrl 有值?}
-    E -- 否 --> F[回傳失敗: URL 未設定]
-    E -- 是 --> G{頻道類型?}
-    G -- Line --> H[POST 空 events 到 WebhookUrl]
-    G -- Telegram --> I{BotToken 有值?}
-    I -- 否 --> J[回傳失敗: BotToken 未設定]
-    I -- 是 --> K[GET setWebhook API<br/>綁定 WebhookUrl]
-    G -- 其他 --> L[回傳: 不支援驗證]
-    H --> M[回傳 WebhookVerifyResult]
-    K --> M
-```
-
-| 頻道 | 驗證方式 | 說明 |
-|------|---------|------|
-| **LINE** | POST 空 events | 模擬 Webhook 事件，驗證端點可達 |
-| **Telegram** | GET setWebhook | 呼叫 Telegram API 綁定 Webhook URL，同時驗證 BotToken 有效性 |
-| **其他** | — | 回傳「不支援」|
 
 ---
 

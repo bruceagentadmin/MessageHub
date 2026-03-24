@@ -68,7 +68,7 @@ MessageHub.Core/
 │   ├── MessageDirection.cs
 │   └── RecentTargetInfo.cs
 │
-├── Stores/Models/           # Store 相關模型
+├── Stores/Models/           # Store 相關模型（保留結構）
 │
 ├── Bus/                     # 訊息匯流排
 │   └── MessageBus.cs            ← IMessageBus 實作（System.Threading.Channels）
@@ -82,7 +82,7 @@ MessageHub.Core/
 │   ├── MessageCoordinator.cs    ← 訊息協調器（進站/手動發送/日誌）
 │   └── EchoMessageProcessor.cs  ← POC 回覆處理器
 │
-├── I*.cs                    # 核心介面（共 12 個）
+├── I*.cs                    # 核心介面（共 8 個）
 ├── ChannelFactory.cs        # 頻道工廠（按名稱查找 IChannel）
 ├── ChannelSettingsResolver.cs # 頻道設定模糊匹配解析器
 └── DependencyInjection.cs   # DI 註冊擴充方法
@@ -92,7 +92,7 @@ MessageHub.Core/
 
 ## 4. 高層類別圖（UML）
 
-> **註**：`ChannelManager` 已移至 **Worker** 層；`ChannelSettingsService`、`NotificationService` 與 `WebhookVerificationService` 已移至 **Domain** 層。
+> **註**：`ChannelManager` 已移至 **Worker** 層；`ChannelSettingsService`、`NotificationService` 與 `WebhookVerificationService` 已移至 **Domain** 層。`IChannelSettingsStore`、`ICommonParameterProvider`、`INotificationService`、`IWebhookVerificationService` 介面亦已移至 Domain 層。
 
 ```mermaid
 classDiagram
@@ -128,6 +128,13 @@ classDiagram
     class IRetryPipeline {
         <<interface>>
         +ExecuteAsync(action)
+    }
+    class IChannelSettingsService {
+        <<interface>>
+        +GetAsync() ChannelConfig
+        +SaveAsync(config) ChannelConfig
+        +GetChannelTypes() IReadOnlyList~ChannelTypeDefinition~
+        +GetSettingsFilePath() string
     }
     class IMessageLogStore {
         <<interface>>
@@ -257,11 +264,12 @@ sequenceDiagram
 | # | 文件 | 涵蓋範圍 |
 |---|------|---------|
 | 1 | [Models — 資料模型](docs/01-models.md) | 所有 record/class/enum 的欄位定義、類別圖與生命週期 |
-| 2 | [Interfaces — 核心介面](docs/02-interfaces.md) | 12 個介面的職責、方法簽名與相依關係 |
+| 2 | [Interfaces — 核心介面](docs/02-interfaces.md) | 8 個 Core 介面的職責、方法簽名與相依關係 |
 | 3 | [MessageBus — 訊息匯流排](docs/03-message-bus.md) | MessageBus 的佇列架構（ChannelManager 移至 Worker 層） |
 | 4 | [Channels — 頻道實作](docs/04-channels.md) | Telegram/Line/Email 頻道實作（Notification/Webhook 移至 Domain 層） |
 | 5 | [Services — 業務服務](docs/05-services.md) | MessageCoordinator 與 EchoProcessor（Settings 移至 Domain 層） |
-| 6 | [DI — 相依性注入](docs/07-dependency-injection.md) | 完整服務註冊對照表與生命週期說明 |
+| 6 | [Stores — 儲存層介面](docs/06-stores.md) | 儲存介面與各層實作分佈（Core 僅定義介面，實作在 Domain/Infrastructure） |
+| 7 | [DI — 相依性注入](docs/07-dependency-injection.md) | Core/Domain/Infrastructure/Worker 完整服務註冊對照表 |
 
 ---
 
@@ -282,7 +290,7 @@ sequenceDiagram
 ### 7.3 如果你要替換儲存層
 
 - 日誌持久化：實作 `IMessageLogStore` → 目前由 Infrastructure 層提供 SQLite 實作。
-- 設定儲存：實作 `IChannelSettingsStore` → 目前由 Domain 層提供 JSON 實作。
+- 設定儲存：實作 `IChannelSettingsStore`（Domain 層介面）→ 目前由 Domain 層提供 JSON 實作。
 - 最近互動目標：實作 `IRecentTargetStore` → 目前由 Infrastructure 層提供 SQLite 實作。
 
 ### 7.4 關鍵設計決策
@@ -293,6 +301,9 @@ sequenceDiagram
 | **內部封裝 (Encapsulation)** | `MessageBus` 為 Core 內部實作；`ChannelManager` (Worker) 與 `NotificationService` (Domain) 亦為各層內部實作 |
 | **三條獨立佇列** | Outbound / Inbound / DLQ 完全隔離 |
 | **模糊匹配設定** | `ChannelSettingsResolver` 支援 6 種匹配策略（精確→包含→特徵推斷）|
+| **數據契約留 Core** | `ChannelConfig`、`ChannelSettings` 等 POCO 模型保留在 Core.Models，避免跨層拆分 |
+| **管理行為移 Domain** | 設定管理、通知、Webhook 驗證等非通訊核心行為移至 Domain 層 |
+| **IChannelSettingsService 留 Core** | Channel 實作直接依賴此介面，移至 Domain 會造成循環依賴 |
 
 ---
 

@@ -1,4 +1,4 @@
-namespace MessageHub.Core;
+namespace MessageHub.Domain;
 
 /// <summary>
 /// 通知服務介面 — 定義系統主動向指定頻道發送通知訊息的標準行為。

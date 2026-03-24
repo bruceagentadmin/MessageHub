@@ -6,7 +6,7 @@
 
 ## 總覽
 
-`MessageHub.Core` 遵循**介面隔離原則 (ISP)**，將不同職責拆分為獨立介面：
+`MessageHub.Core` 遵循**介面隔離原則 (ISP)**，將不同職責拆分為獨立介面。Core 層專注於通訊核心契約，共 **8 個介面**：
 
 | 介面 | 職責 | 實作 |
 |------|------|------|
@@ -15,13 +15,11 @@
 | `IMessageCoordinator` | 訊息流的高層協調 | MessageCoordinator |
 | `IMessageProcessor` | 訊息內容的商業邏輯處理 | EchoMessageProcessor |
 | `IRetryPipeline` | 重試策略抽象 | PollyRetryPipeline（Infrastructure 層）|
-| `IChannelSettingsService` | 頻道設定 CRUD | ChannelSettingsService |
-| `IChannelSettingsStore` | 頻道設定持久化 I/O | JsonChannelSettingsStore |
-| `ICommonParameterProvider` | 通用鍵值參數查詢 | ChannelSettingsService |
+| `IChannelSettingsService` | 頻道設定 CRUD | ChannelSettingsService（Domain 層）|
 | `IMessageLogStore` | 訊息日誌寫入/查詢 | SqliteMessageLogRepository（Infrastructure 層）|
 | `IRecentTargetStore` | 最近互動目標記錄 | SqliteRecentTargetStore（Infrastructure 層）|
-| `INotificationService` | 系統主動通知 | NotificationService |
-| `IWebhookVerificationService` | Webhook 連線驗證 | WebhookVerificationService |
+
+> **已遷移至 Domain 層的介面**：`IChannelSettingsStore`、`ICommonParameterProvider`、`INotificationService`、`IWebhookVerificationService` 已於重構中移至 `MessageHub.Domain` 命名空間，不再屬於 Core 層。
 
 ---
 
@@ -33,17 +31,20 @@ graph TD
         API[API Controller]
     end
 
-    subgraph "核心介面"
+    subgraph "Core 介面"
         IMC[IMessageCoordinator]
         IMP[IMessageProcessor]
         IMB[IMessageBus]
         ICH[IChannel]
         IRP[IRetryPipeline]
         ICSS[IChannelSettingsService]
-        ICSS2[IChannelSettingsStore]
-        ICPP[ICommonParameterProvider]
         IMLS[IMessageLogStore]
         IRTS[IRecentTargetStore]
+    end
+
+    subgraph "Domain 介面"
+        ICSS2[IChannelSettingsStore]
+        ICPP[ICommonParameterProvider]
         INS[INotificationService]
         IWVS[IWebhookVerificationService]
     end
@@ -76,10 +77,13 @@ graph TD
 
     style IRP fill:#f9f,stroke:#333
     style ICSS2 fill:#bbf,stroke:#333
+    style ICPP fill:#bbf,stroke:#333
+    style INS fill:#bbf,stroke:#333
+    style IWVS fill:#bbf,stroke:#333
 ```
 
 > 粉色 `IRetryPipeline` 的實作在 `MessageHub.Infrastructure` 層（Polly）。  
-> 藍色 `IChannelSettingsStore` 為儲存層 I/O 介面。
+> 藍色介面（`IChannelSettingsStore`、`ICommonParameterProvider`、`INotificationService`、`IWebhookVerificationService`）已移至 `MessageHub.Domain` 層。
 
 ---
 
@@ -195,35 +199,7 @@ public interface IChannelSettingsService
 
 **職責**：頻道設定的 CRUD 操作與正規化處理。`GetSettingsFilePath()` 回傳設定檔的實際檔案路徑。
 
----
-
-### ICommonParameterProvider — 通用參數提供者
-
-```csharp
-public interface ICommonParameterProvider
-{
-    Task<T?> GetParameterByKeyAsync<T>(string key, CancellationToken ct) where T : class;
-}
-```
-
-**職責**：以鍵值方式查詢組態參數，目前僅支援 `"ChannelConfig"` 鍵。
-
-**設計說明**：與 `IChannelSettingsService` 由同一個 `ChannelSettingsService` 實作，但透過 ISP 分離職責，讓只需要讀取參數的服務不必依賴完整的 CRUD 介面。
-
----
-
-### IChannelSettingsStore — 頻道設定儲存
-
-```csharp
-public interface IChannelSettingsStore
-{
-    Task<ChannelConfig> LoadAsync(CancellationToken ct);
-    Task<ChannelConfig> SaveAsync(ChannelConfig config, CancellationToken ct);
-    string GetFilePath();
-}
-```
-
-**職責**：純粹的持久化 I/O（讀寫 JSON 檔案），不含任何業務邏輯。
+**設計說明**：介面定義在 Core 層（因為 Channel 實作直接依賴它），但實作 `ChannelSettingsService` 位於 Domain 層。
 
 ---
 
@@ -248,29 +224,3 @@ public interface IRecentTargetStore
     Task<RecentTargetInfo?> GetLastTargetAsync(string channel, CancellationToken ct);
 }
 ```
-
----
-
-### INotificationService — 通知服務
-
-```csharp
-public interface INotificationService
-{
-    Task SendNotificationAsync(string tenantId, string channel, string message, CancellationToken ct);
-}
-```
-
-**職責**：系統主動向指定頻道發送通知（讀取設定中的 `NotificationTargetId`）。
-
----
-
-### IWebhookVerificationService — Webhook 驗證服務
-
-```csharp
-public interface IWebhookVerificationService
-{
-    Task<WebhookVerifyResult> VerifyAsync(string channelId, CancellationToken ct);
-}
-```
-
-**職責**：驗證指定頻道的 Webhook 連線是否正常（LINE 送空事件、Telegram 呼叫 setWebhook）。

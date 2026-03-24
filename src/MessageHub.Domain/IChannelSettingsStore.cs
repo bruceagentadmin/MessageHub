@@ -1,6 +1,6 @@
 using MessageHub.Core.Models;
 
-namespace MessageHub.Core;
+namespace MessageHub.Domain;
 
 /// <summary>
 /// 頻道設定儲存介面 — 負責持久化與讀取所有頻道的組態設定，

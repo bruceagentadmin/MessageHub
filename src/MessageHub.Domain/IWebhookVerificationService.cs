@@ -1,6 +1,6 @@
 using MessageHub.Core.Models;
 
-namespace MessageHub.Core;
+namespace MessageHub.Domain;
 
 /// <summary>
 /// Webhook 驗證服務介面 — 負責驗證指定頻道的 Webhook 連線是否正常。

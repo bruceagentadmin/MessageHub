@@ -2,6 +2,7 @@ using MessageHub.Api.Controllers;
 using MessageHub.Core;
 using MessageHub.Core.Models;
 using MessageHub.Core.Services;
+using MessageHub.Domain;
 using MessageHub.Domain.Models;
 using MessageHub.Domain.Repositories;
 using MessageHub.Domain.Services;

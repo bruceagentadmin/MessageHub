@@ -1,44 +1,64 @@
 # 07 — Dependency Injection 相依性注入
 
-> 本文件詳述 `DependencyInjection.cs` 中的完整服務註冊架構。
+> 本文件詳述各層 `DependencyInjection.cs` 中的服務註冊架構。
 
 ---
 
 ## 入口方法
 
 ```csharp
+// Core 層
 public static IServiceCollection AddMessageHubCore(this IServiceCollection services)
+
+// Domain 層
+public static IServiceCollection AddMessageHubDomain(this IServiceCollection services)
+
+// Infrastructure 層
+public static IServiceCollection AddMessageHubInfrastructure(this IServiceCollection services)
+
+// Worker 層
+public static IServiceCollection AddMessageHubWorker(this IServiceCollection services)
 ```
 
-宿主應用程式（`MessageHub.Api`）只需一行呼叫即可完成 Core 層所有服務的 DI 註冊：
+宿主應用程式（`MessageHub.Api`）依序呼叫各層的擴充方法完成全部 DI 註冊：
 
 ```csharp
 builder.Services.AddMessageHubCore();
+builder.Services.AddMessageHubDomain();
+builder.Services.AddMessageHubInfrastructure();
+builder.Services.AddMessageHubWorker();
 ```
 
 ---
 
 ## 完整服務註冊對照表
 
-### Core 層（`AddMessageHubCore`）— 共 15 筆註冊
+### Core 層（`AddMessageHubCore`）— 共 8 筆註冊
+
+| # | 介面 / 型別 | 實作 | 生命週期 | 說明 |
+|---|-------------|------|---------|------|
+| 1 | `IChannel` | `TelegramChannel` | Singleton | Telegram 頻道 |
+| 2 | `IChannel` | `LineChannel` | Singleton | LINE 頻道 |
+| 3 | `IChannel` | `EmailChannel` | Singleton | Email 頻道（POC no-op）|
+| 4 | `ChannelFactory` | `ChannelFactory` | Singleton | 頻道查找工廠 |
+| 5 | `MessageBus`（具體型別）| `MessageBus` | Singleton | 佇列主實例 |
+| 6 | `IMessageBus` | → `MessageBus`（委派）| Singleton | 介面指向同一實例 |
+| 7 | `IMessageProcessor` | `EchoMessageProcessor` | Singleton | POC 回覆處理器 |
+| 8 | `IMessageCoordinator` | `MessageCoordinator` | Singleton | 訊息協調器 |
+
+### Domain 層（`AddMessageHubDomain`）— 共 9 筆註冊
 
 | # | 介面 / 型別 | 實作 | 生命週期 | 說明 |
 |---|-------------|------|---------|------|
 | 1 | `IChannelSettingsStore` | `JsonChannelSettingsStore` | Singleton | JSON 檔案持久化設定 |
-| 2 | `IChannel` | `TelegramChannel` | Singleton | Telegram 頻道 |
-| 3 | `IChannel` | `LineChannel` | Singleton | LINE 頻道 |
-| 4 | `IChannel` | `EmailChannel` | Singleton | Email 頻道（POC no-op）|
-| 5 | `ChannelFactory` | `ChannelFactory` | Singleton | 頻道查找工廠 |
-| 6 | `MessageBus`（具體型別）| `MessageBus` | Singleton | 佇列主實例 |
-| 7 | `IMessageBus` | → `MessageBus`（委派）| Singleton | 介面指向同一實例 |
-| 8 | `ChannelSettingsService`（具體型別）| `ChannelSettingsService` | Singleton | 設定服務主實例 |
-| 9 | `IChannelSettingsService` | → `ChannelSettingsService`（委派）| Singleton | 介面指向同一實例 |
-| 10 | `ICommonParameterProvider` | → `ChannelSettingsService`（委派）| Singleton | 介面指向同一實例 |
-| 11 | `IMessageProcessor` | `EchoMessageProcessor` | Singleton | POC 回覆處理器 |
-| 12 | `IMessageCoordinator` | `MessageCoordinator` | Singleton | 訊息協調器 |
-| 13 | `INotificationService` | `NotificationService` | Singleton | 主動通知服務 |
-| 14 | `IWebhookVerificationService` | `WebhookVerificationService` | Singleton | Webhook 驗證 |
-| 15 | `IHostedService` | `ChannelManager` | HostedService | 背景佇列消費者 |
+| 2 | `ChannelSettingsService`（具體型別）| `ChannelSettingsService` | Singleton | 設定服務主實例 |
+| 3 | `IChannelSettingsService` | → `ChannelSettingsService`（委派）| Singleton | 介面指向同一實例 |
+| 4 | `ICommonParameterProvider` | → `ChannelSettingsService`（委派）| Singleton | 介面指向同一實例 |
+| 5 | `INotificationService` | `NotificationService` | Singleton | 主動通知服務 |
+| 6 | `IWebhookVerificationService` | `WebhookVerificationService` | Singleton | Webhook 驗證 |
+| 7 | `IMessagingService` | `MessagingService` | Singleton | 訊息操作門面 |
+| 8 | `IHistoryService` | `HistoryService` | Singleton | 歷史記錄查詢 |
+| 9 | `IContactService` | `ContactService` | Singleton | 聯絡人管理 |
 
 ### Infrastructure 層（`AddMessageHubInfrastructure`）— 儲存與重試
 
@@ -52,7 +72,11 @@ builder.Services.AddMessageHubCore();
 | 6 | `IRecentTargetStore` | `SqliteRecentTargetStore` | Singleton | SQLite 最近互動目標 |
 | 7 | `IContactRepository` | `SqliteContactRepository` | Singleton | SQLite 聯絡人儲存 |
 
-> **注意**：`IMessageLogStore` 與 `IRecentTargetStore` 原先由 Core 層以記憶體實作（`InMemoryMessageLogStore`、`RecentTargetStore`）註冊，現已移至 Infrastructure 層改用 SQLite 持久化。Core 層仍保留記憶體實作原始碼供測試或備用。
+### Worker 層（`AddMessageHubWorker`）— 背景服務
+
+| # | 介面 / 型別 | 實作 | 生命週期 | 說明 |
+|---|-------------|------|---------|------|
+| 1 | `IHostedService` | `ChannelManager` | HostedService | 背景佇列消費者 |
 
 ---
 
@@ -60,7 +84,7 @@ builder.Services.AddMessageHubCore();
 
 ```mermaid
 graph TB
-    subgraph "Core — Stores（儲存層）"
+    subgraph "Domain — Stores（儲存層）"
         S3[JsonChannelSettingsStore]
     end
 
@@ -69,27 +93,33 @@ graph TB
         IS2[SqliteRecentTargetStore]
     end
 
-    subgraph "Channels（頻道）"
+    subgraph "Core — Channels（頻道）"
         C1[TelegramChannel]
         C2[LineChannel]
         C3[EmailChannel]
         CF[ChannelFactory]
     end
 
-    subgraph "Bus（匯流排）"
+    subgraph "Core — Bus（匯流排）"
         MB[MessageBus]
+    end
+
+    subgraph "Worker — 背景服務"
         CM[ChannelManager]
     end
 
-    subgraph "Services（業務服務）"
-        CSS[ChannelSettingsService]
+    subgraph "Core — Services（業務服務）"
         EMP[EchoMessageProcessor]
         MC[MessageCoordinator]
     end
 
-    subgraph "輔助服務"
+    subgraph "Domain — Services（領域服務）"
+        CSS[ChannelSettingsService]
         NS[NotificationService]
         WVS[WebhookVerificationService]
+        MS[MessagingService]
+        HS[HistoryService]
+        CS[ContactService]
     end
 
     CF --> C1
@@ -125,11 +155,11 @@ graph TB
 當一個類別實作多個介面時，使用委派工廠確保所有介面解析到同一個實例：
 
 ```csharp
-// MessageBus：具體型別 + 介面指向同一實例
+// MessageBus：具體型別 + 介面指向同一實例（Core 層）
 services.AddSingleton<MessageBus>();
 services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<MessageBus>());
 
-// ChannelSettingsService：一個實例同時滿足兩個介面
+// ChannelSettingsService：一個實例同時滿足兩個介面（Domain 層）
 services.AddSingleton<ChannelSettingsService>();
 services.AddSingleton<IChannelSettingsService>(sp => sp.GetRequiredService<ChannelSettingsService>());
 services.AddSingleton<ICommonParameterProvider>(sp => sp.GetRequiredService<ChannelSettingsService>());
@@ -179,7 +209,7 @@ services.AddHostedService<ChannelManager>();
 若要新增一個頻道（例如 Discord）：
 
 ```csharp
-// 1. 在 Channels 區塊加入新頻道
+// 1. 在 Core 層 Channels 區塊加入新頻道
 services.AddSingleton<IChannel, DiscordChannel>();
 
 // 就這樣！ChannelFactory 會自動收集所有 IChannel 實作

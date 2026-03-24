@@ -1,5 +1,6 @@
 using MessageHub.Core;
 using MessageHub.Core.Models;
+using MessageHub.Domain;
 using MessageHub.Domain.Services;
 
 namespace MessageHub.Tests;

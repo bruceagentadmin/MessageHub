@@ -1,64 +1,61 @@
-# 06 — Stores 儲存層
+# 06 — Stores 儲存層介面
 
-> 本文件詳述 `Stores/` 資料夾下的三個儲存實作，以及它們的持久化策略與限制。
+> 本文件詳述 Core 層定義的儲存介面及其在各層的實作分佈。
 
 ---
 
 ## 總覽
 
-| 類別 | 實作介面 | 儲存方式 | 持久化 | 執行緒安全 | DI 註冊狀態 |
-|------|---------|---------|--------|-----------|------------|
-| `InMemoryMessageLogStore` | `IMessageLogStore` | 記憶體（ConcurrentQueue）| 否 | 是 | ⚠️ 已由 Infrastructure 層 SQLite 實作取代 |
-| `JsonChannelSettingsStore` | `IChannelSettingsStore` | JSON 檔案 | 是 | 否（單寫者假設）| ✅ Core DI 註冊中 |
-| `RecentTargetStore` | `IRecentTargetStore` | 記憶體（ConcurrentDictionary）| 否 | 是 | ⚠️ 已由 Infrastructure 層 SQLite 實作取代 |
+Core 層定義了儲存相關的介面契約，但**不包含任何儲存實作**。`Stores/` 目錄目前為空，所有儲存實作已分別移至 Domain 層與 Infrastructure 層。
 
-> **重要變更**：`IMessageLogStore` 與 `IRecentTargetStore` 的 DI 註冊已從 Core 層移至 Infrastructure 層，分別由 `SqliteMessageLogRepository` 與 `SqliteRecentTargetStore` 提供 SQLite 持久化實作。Core 層仍保留記憶體實作的原始碼，可作為測試用途或備用方案。
+| 介面（Core 層定義） | 實作 | 所在層 | 儲存方式 |
+|---------------------|------|--------|---------|
+| `IChannelSettingsStore` | `JsonChannelSettingsStore` | **Domain** | JSON 檔案 |
+| `IMessageLogStore` | `SqliteMessageLogRepository` | **Infrastructure** | SQLite |
+| `IRecentTargetStore` | `SqliteRecentTargetStore` | **Infrastructure** | SQLite |
+
+> **重要變更**：
+> - `IChannelSettingsStore` 介面已移至 `MessageHub.Domain` 命名空間，由 Domain 層的 `JsonChannelSettingsStore` 實作。
+> - `IMessageLogStore` 與 `IRecentTargetStore` 的介面仍在 Core 層，實作由 Infrastructure 層提供 SQLite 持久化。
+> - Core 層原先保留的記憶體實作（`InMemoryMessageLogStore`、`RecentTargetStore`）已不再存在於 `Stores/` 目錄中。
 
 ---
 
-## InMemoryMessageLogStore
+## 介面說明
 
-> ⚠️ **DI 註冊已移至 Infrastructure 層**：目前 `IMessageLogStore` 由 `SqliteMessageLogRepository`（SQLite 持久化）提供實作，透過 `AddMessageHubInfrastructure()` 註冊。以下為 Core 層保留的記憶體實作說明。
-
-### 資料結構
+### IMessageLogStore — 訊息日誌儲存
 
 ```csharp
-private readonly ConcurrentQueue<MessageLogEntry> _entries = new();
+public interface IMessageLogStore
+{
+    Task AddAsync(MessageLogEntry entry, CancellationToken ct);
+    Task<IReadOnlyList<MessageLogEntry>> GetRecentAsync(int count, CancellationToken ct);
+}
 ```
 
-### 容量策略
+**目前實作**：`MessageHub.Infrastructure.SqliteMessageLogRepository`（SQLite 持久化），透過 `AddMessageHubInfrastructure()` 註冊。
 
-- **上限**：500 筆（硬編碼）
-- **淘汰策略**：滾動視窗 — 新增時若超過上限，從最舊的一端 `TryDequeue`
-- **查詢上限**：`GetRecentAsync` 的 count 被 `Math.Clamp(count, 1, 200)` 限制
+### IRecentTargetStore — 最近互動目標儲存
 
-### 流程圖
-
-```mermaid
-flowchart TD
-    A[AddAsync entry] --> B[Enqueue 新記錄]
-    B --> C{Count > 500?}
-    C -- 是 --> D[TryDequeue 移除最舊記錄]
-    D --> C
-    C -- 否 --> E[完成]
-
-    F[GetRecentAsync count] --> G[Clamp count 至 1~200]
-    G --> H[Reverse 佇列取最新]
-    H --> I[Take count 筆]
-    I --> J[回傳陣列]
+```csharp
+public interface IRecentTargetStore
+{
+    Task SetLastTargetAsync(string channel, string targetId, string? displayName, CancellationToken ct);
+    Task<RecentTargetInfo?> GetLastTargetAsync(string channel, CancellationToken ct);
+}
 ```
 
-### 限制
-
-- 服務重啟後所有日誌遺失
-- 無分頁 / 篩選 / 全文搜尋能力
-- 適用 POC 階段，生產環境應替換為資料庫實作
+**目前實作**：`MessageHub.Infrastructure.SqliteRecentTargetStore`（SQLite 持久化），透過 `AddMessageHubInfrastructure()` 註冊。
 
 ---
 
-## JsonChannelSettingsStore
+## Domain 層儲存實作
 
-### 檔案路徑
+### JsonChannelSettingsStore
+
+`IChannelSettingsStore` 介面與 `JsonChannelSettingsStore` 實作皆位於 Domain 層。
+
+#### 檔案路徑
 
 ```csharp
 var baseDirectory = AppContext.BaseDirectory;
@@ -68,7 +65,7 @@ _filePath = Path.Combine(dataDirectory, "channel-settings.json");
 
 從 `bin/Debug/net8.0/` 向上追溯 5 層到儲存庫根目錄的 `data/` 資料夾。
 
-### 讀取策略（LoadAsync）
+#### 讀取策略（LoadAsync）
 
 ```mermaid
 flowchart TD
@@ -89,7 +86,7 @@ flowchart TD
     M -- 否 --> O[回傳空白 ChannelConfig]
 ```
 
-### 新舊版格式對照
+#### 新舊版格式對照
 
 **新版格式**（當前）：
 ```json
@@ -112,7 +109,7 @@ flowchart TD
 
 舊版格式使用陣列結構，`Config` 對應新版的 `Parameters`。`TryDeserializeLegacy` 會自動轉換。
 
-### 預設設定
+#### 預設設定
 
 首次啟動時自動建立，包含 Line 與 Telegram 兩個頻道：
 
@@ -123,7 +120,7 @@ flowchart TD
 
 Token 等敏感參數預設為空字串，需手動填入。
 
-### 序列化選項
+#### 序列化選項
 
 ```csharp
 private static readonly JsonSerializerOptions JsonOptions = new()
@@ -133,56 +130,11 @@ private static readonly JsonSerializerOptions JsonOptions = new()
 };
 ```
 
-### 限制
+#### 限制
 
 - 無檔案鎖定（假設單寫者模式）
 - 無併發安全保護（多個 SaveAsync 同時呼叫可能覆蓋彼此）
 - 適用 POC 階段，生產環境應替換為資料庫或加上檔案鎖定
-
----
-
-## RecentTargetStore
-
-> ⚠️ **DI 註冊已移至 Infrastructure 層**：目前 `IRecentTargetStore` 由 `SqliteRecentTargetStore`（SQLite 持久化）提供實作，透過 `AddMessageHubInfrastructure()` 註冊。以下為 Core 層保留的記憶體實作說明。
-
-### 資料結構
-
-```csharp
-private readonly ConcurrentDictionary<string, RecentTargetInfo> _targets
-    = new(StringComparer.OrdinalIgnoreCase);
-```
-
-### 行為
-
-| 方法 | 說明 |
-|------|------|
-| `SetLastTargetAsync` | 以頻道名稱為鍵，覆蓋寫入最新的互動目標（含 UTC 時間戳記）|
-| `GetLastTargetAsync` | 以頻道名稱查詢最近互動目標，不存在則回傳 `null` |
-
-### 使用場景
-
-```mermaid
-sequenceDiagram
-    participant WH as Webhook 進站
-    participant MC as MessageCoordinator
-    participant RTS as RecentTargetStore
-    participant CC as 控制中心
-
-    WH->>MC: HandleInboundAsync
-    MC->>RTS: SetLastTargetAsync("telegram", "chat-123", "user-456")
-    Note over RTS: 記住 telegram 的最後互動對象
-
-    CC->>MC: SendManualAsync(targetId = "")
-    MC->>RTS: GetLastTargetAsync("telegram")
-    RTS-->>MC: RecentTargetInfo("telegram", "chat-123", ...)
-    Note over MC: 自動使用 chat-123 作為發送目標
-```
-
-### 限制
-
-- 每個頻道只記錄**一個**最近互動目標（不是一個列表）
-- 服務重啟後遺失
-- 不區分租戶（所有租戶共用同一個 Store）
 
 ---
 
@@ -200,8 +152,10 @@ sequenceDiagram
 
 ### 設定儲存（IChannelSettingsStore）
 
+目前由 Domain 層的 `JsonChannelSettingsStore` 提供 JSON 檔案實作。若要替換：
+
 1. 建立新類別（如 `DbChannelSettingsStore`）實作 `IChannelSettingsStore`
-2. 在 `Core/DependencyInjection.cs` 替換
+2. 在 `Domain/DependencyInjection.cs` 替換註冊
 3. 建議支援：併發安全、變更審計、版本控制
 
 ### 最近互動目標（IRecentTargetStore）

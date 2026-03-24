@@ -1,6 +1,6 @@
 # 05 — Services 業務服務
 
-> 本文件詳述 `Services/` 資料夾下的三個業務服務：MessageCoordinator、ChannelSettingsService、EchoMessageProcessor。
+> 本文件詳述 `Services/` 資料夾下的業務服務，以及根目錄的 `ChannelFactory` 與 `ChannelSettingsResolver`。
 
 ---
 
@@ -9,8 +9,9 @@
 | 類別 | 實作介面 | 職責 |
 |------|---------|------|
 | `MessageCoordinator` | `IMessageCoordinator` | 訊息流的高層協調（進站/手動發送/日誌/頻道清單）|
-| `ChannelSettingsService` | `IChannelSettingsService` + `ICommonParameterProvider` | 頻道設定 CRUD + 正規化 + 通用參數查詢 |
 | `EchoMessageProcessor` | `IMessageProcessor` | POC 回覆處理器（原樣回傳確認文字）|
+
+> **已遷移至 Domain 層**：`ChannelSettingsService`（同時實作 `IChannelSettingsService` + `ICommonParameterProvider`）已移至 `MessageHub.Domain.Services`，由 Domain 層的 `AddMessageHubDomain()` 註冊。
 
 ---
 
@@ -100,79 +101,6 @@ flowchart TD
 ### GetRecentLogsAsync / GetChannels
 
 直接委派至 `IMessageLogStore.GetRecentAsync` 與 `ChannelFactory.GetDefinitions`，無額外邏輯。
-
----
-
-## ChannelSettingsService
-
-### 雙介面實作
-
-`ChannelSettingsService` 同時實作兩個介面，在 DI 中以同一個 Singleton 實例註冊：
-
-```mermaid
-classDiagram
-    class ChannelSettingsService {
-        +GetAsync() ChannelConfig
-        +SaveAsync(config) ChannelConfig
-        +GetChannelTypes() IReadOnlyList~ChannelTypeDefinition~
-        +GetSettingsFilePath() string
-        +GetParameterByKeyAsync~T~(key) T?
-        -NormalizeConfig(config) ChannelConfig
-        -NormalizeSettings(channelName, settings) ChannelSettings
-        -Rename(parameters, oldKey, newKey)
-    }
-
-    class IChannelSettingsService {
-        <<interface>>
-    }
-    class ICommonParameterProvider {
-        <<interface>>
-    }
-
-    IChannelSettingsService <|.. ChannelSettingsService
-    ICommonParameterProvider <|.. ChannelSettingsService
-    ChannelSettingsService --> IChannelSettingsStore : 委派持久化
-```
-
-### 正規化流程
-
-每次 `GetAsync` 或 `SaveAsync` 都會自動執行正規化：
-
-```mermaid
-flowchart TD
-    A[NormalizeConfig] --> B[確保 Channels 不為 null]
-    B --> C[過濾空白鍵值項目]
-    C --> D[去除鍵名前後空白]
-    D --> E[對每個頻道呼叫 NormalizeSettings]
-    E --> F[重建不區分大小寫字典]
-
-    subgraph NormalizeSettings
-        G[過濾空值參數] --> H[去除參數鍵值前後空白]
-        H --> I[重建不區分大小寫參數字典]
-        I --> J{頻道類型?}
-        J -- Line --> K["Rename: Token→ChannelAccessToken<br/>Secret→ChannelSecret"]
-        J -- Telegram --> L["Rename: Token→BotToken"]
-        J -- 其他 --> M[不做額外處理]
-    end
-```
-
-### 頻道類型定義（靜態資料）
-
-`Definitions` 是一個靜態的 `IReadOnlyList<ChannelTypeDefinition>`，定義每個頻道需要的設定欄位：
-
-| 頻道 | 欄位 | 必填 | 機密 |
-|------|------|------|------|
-| **Line** | ChannelAccessToken | Yes | Yes |
-| | ChannelSecret | No | Yes |
-| | WebhookUrl | No | No |
-| | WebhookMode | No | No |
-| **Telegram** | BotToken | Yes | Yes |
-| | WebhookUrl | No | No |
-| | WebhookMode | No | No |
-| **Email** | Host | Yes | No |
-| | Port | Yes | No |
-| | Username | Yes | No |
-| | Password | Yes | Yes |
 
 ---
 
